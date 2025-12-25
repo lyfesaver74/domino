@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Domino & Friends Console</title>
+  <link rel="stylesheet" href="/static/console.css" />
+</head>
+<body>
+  <header>
+    <h1>Domino & Friends Console</h1>
+    <div style="display:flex; align-items:center;">
+      <div id="persona-select">
+        <label><input type="radio" name="persona" value="domino"> Domino</label>
+        <label><input type="radio" name="persona" value="penny"> Penny</label>
+        <label><input type="radio" name="persona" value="jimmy"> Jimmy</label>
+        <label><input type="radio" name="persona" value="auto" checked> Auto</label>
+      </div>
+      <span id="status"></span>
+      <button id="play-btn" disabled title="Play last server audio">Play</button>
+      <label style="margin-left:12px; font-size: 0.95em; user-select:none;">
+        <input type="checkbox" id="auto-promote" /> Auto-promote
+      </label>
+    </div>
+  </header>
+
+  <div id="chat"></div>
+
+  <div id="input-bar">
+    <button id="mic-btn" title="Click to start/stop listening">🎙</button>
+    <textarea id="text-input" rows="2" placeholder="Type a message... (Enter to send, Shift+Enter for newline)"></textarea>
+    <button id="send-btn">Send</button>
+  </div>
+  <script src="/static/console.js"></script>
+</body>
+</html>
