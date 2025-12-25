@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Domino Overlay</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="root">
+      <div id="top">
+        <div id="conn">OFFLINE</div>
+        <div id="status">status: —</div>
+        <div id="hint">—</div>
+        <button id="audioUnlock" class="audio-unlock">Enable Audio</button>
+        <div id="audioErr" class="audio-err"></div>
+      </div>
+
+      <div id="bottom">
+        <div id="ticker" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <script src="overlay.js"></script>
+  </body>
+</html>

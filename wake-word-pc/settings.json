@@ -1,0 +1,76 @@
+{
+  "hub": {
+    "base_url": "http://192.168.0.121:2424",
+    "stt_path": "/api/stt",
+    "ask_path": "/api/ask",
+    "timeout_s": 60,
+    "health_path": "/health",
+    "version_path": "/version"
+  },
+  "overlay_ws": {
+    "host": "127.0.0.1",
+    "port": 8765,
+    "path": "/ws"
+  },
+  "wake_words": [
+    {
+      "label": "Domino",
+      "wake_word": "Domino",
+      "persona_mode": "Domino",
+      "color": "#00FFAA"
+    },
+    {
+      "label": "Penny",
+      "wake_word": "Penny",
+      "persona_mode": "Penny",
+      "color": "#FF66CC"
+    },
+    {
+      "label": "Jimmy",
+      "wake_word": "Jimmy",
+      "persona_mode": "Jimmy",
+      "color": "#66AAFF"
+    },
+    {
+      "label": "Collective",
+      "wake_word": "Collective",
+      "persona_mode": "Collective",
+      "color": "#FFFFFF"
+    }
+  ],
+  "audio": {
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "sample_format": "pcm16",
+    "input_device": 74
+  },
+  "wake_engine": {
+    "type": "vosk_keyword",
+    "vosk_model_path": "models/vosk-model-small-en-us-0.15",
+    "trigger_cooldown_ms": 2500,
+    "min_partial_chars": 3,
+    "emit_on_partial": true,
+    "use_grammar": false
+  },
+  "recording": {
+    "max_seconds": 12,
+    "vad": {
+      "silence_ms_to_stop": 1300,
+      "energy_threshold": 0.01,
+      "no_speech_ms_to_stop": 6000
+    }
+  },
+  "sound_cues": {
+    "enabled": false,
+    "per_persona": {
+      "Domino": null,
+      "Penny": null,
+      "Jimmy": null,
+      "Collective": null
+    }
+  },
+  "client": {
+    "device": "surface-pro",
+    "session_id": null
+  }
+}
