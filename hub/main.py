@@ -20,6 +20,7 @@ import httpx
 from dotenv import load_dotenv
 from openai import OpenAI
 import google.generativeai as genai
+from threading import Lock
 
 
 logger = logging.getLogger("domino_hub")
@@ -342,10 +343,18 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "mistral-local")
 # LM Studio model identifier (also used as the mode name)
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-nemo-base-2407")
 
-mistral_client = OpenAI(
-    base_url=MISTRAL_BASE_URL,
-    api_key=MISTRAL_API_KEY,
-)
+_mistral_clients_lock = Lock()
+_mistral_clients: Dict[str, OpenAI] = {}
+
+
+def _get_mistral_client(base_url: str) -> OpenAI:
+    url = (base_url or "").strip() or MISTRAL_BASE_URL
+    with _mistral_clients_lock:
+        client = _mistral_clients.get(url)
+        if client is None:
+            client = OpenAI(base_url=url, api_key=MISTRAL_API_KEY)
+            _mistral_clients[url] = client
+        return client
 
 # ChatGPT (Penny)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -821,7 +830,7 @@ async def api_history_clear(session_id: Optional[str] = None) -> Dict[str, Any]:
 # LLM call helpers
 # -------------------------
 
-async def call_mistral(system_prompt: str, user_text: str, context: Optional[Context]) -> str:
+async def call_mistral(system_prompt: str, user_text: str, context: Optional[Context], *, base_url: str) -> str:
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system_prompt},
     ]
@@ -838,12 +847,17 @@ async def call_mistral(system_prompt: str, user_text: str, context: Optional[Con
     messages.append({"role": "user", "content": user_text})
 
     def _do_call() -> str:
-        resp = mistral_client.chat.completions.create(
-            model=MISTRAL_MODEL,
-            messages=cast(Any, messages),
-            temperature=0.6,
-        )
-        return resp.choices[0].message.content or ""
+        client = _get_mistral_client(base_url)
+        try:
+            resp = client.chat.completions.create(
+                model=MISTRAL_MODEL,
+                messages=cast(Any, messages),
+                temperature=0.6,
+            )
+            return resp.choices[0].message.content or ""
+        except Exception as e:  # noqa: BLE001
+            msg = str(e) or type(e).__name__
+            raise RuntimeError(f"Mistral call failed (base_url={base_url}): {msg}") from e
 
     # OpenAI-compatible clients are synchronous; run in a thread so SSE can flush.
     return await asyncio.to_thread(_do_call)
@@ -985,7 +999,9 @@ async def route_one_persona(persona_key: str, user_text: str, ctx: Context, sess
     memory_store.add_chat_message(session_id, persona_key, "user", user_text or "")
 
     if llm in ("mistral", "lmstudio"):
-        raw_reply = await call_mistral(system_prompt, user_text, ctx)
+        base_urls = promoted.get("base_urls") or {}
+        mistral_url = (base_urls.get("mistral") or "").strip() or MISTRAL_BASE_URL
+        raw_reply = await call_mistral(system_prompt, user_text, ctx, base_url=mistral_url)
     elif llm == "chatgpt":
         raw_reply = await call_chatgpt(system_prompt, user_text, ctx)
     elif llm == "gemini":
@@ -1047,9 +1063,16 @@ async def root() -> HTMLResponse:
 
 @app.get("/health")
 async def health() -> Dict[str, Any]:
+    promoted = memory_store.get_promoted_state()
+    base_urls = promoted.get("base_urls") or {}
+    mistral_url_promoted = (base_urls.get("mistral") or "").strip() or None
+    mistral_url_effective = mistral_url_promoted or MISTRAL_BASE_URL
     return {
         "status": "ok",
-        "mistral_base_url": MISTRAL_BASE_URL,
+        # Effective URL used for Domino (may be overridden by promoted-state)
+        "mistral_base_url": mistral_url_effective,
+        "mistral_base_url_env": MISTRAL_BASE_URL,
+        "mistral_base_url_promoted": mistral_url_promoted,
         "has_openai": bool(openai_client),
         "gemini_enabled": gemini_enabled,
         "ha_enabled": ha_enabled,
