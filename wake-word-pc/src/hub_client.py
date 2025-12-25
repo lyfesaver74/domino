@@ -121,7 +121,9 @@ class HubClient:
             return HubAskResult(primary=primary, responses=responses)
 
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            print(f"[HubClient] Ask Connection Failed: {e}")
+            # Some httpx exceptions stringify to an empty message; include repr for diagnostics.
+            msg = str(e).strip() or repr(e)
+            print(f"[HubClient] Ask Connection Failed: {msg}")
             return None
         except httpx.HTTPStatusError as e:
             print(f"[HubClient] Ask Server Error ({e.response.status_code}): {e}")

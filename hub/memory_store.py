@@ -34,7 +34,7 @@ DEFAULT_PROMOTED_STATE: Dict[str, Any] = {
     # Convenience snapshot of key service URLs (not necessarily injected into prompts)
     "base_urls": {
         "ha": os.getenv("HA_BASE_URL") or None,
-        "qwen": os.getenv("QWEN_BASE_URL") or None,
+        "mistral": os.getenv("MISTRAL_BASE_URL") or None,
         "fish": os.getenv("FISH_TTS_BASE_URL") or None,
     },
     # Retrieval memory off by default to avoid “creepy/wrong” behavior

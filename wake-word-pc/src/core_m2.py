@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from core_ws import CoreWSServer
 from hub_client import HubClient, persona_display_name, wake_persona_to_hub
-from overlay_events import assistant_reply, error, status
+from overlay_events import actions, assistant_reply, error, status, tts_audio, user_utterance, wake
 from recorder import record_command
 from wake_vosk import VoskWakeListener
 
@@ -49,6 +49,14 @@ async def _wake_record_loop(
             )
 
             await server.broadcast(
+                wake(
+                    wake_word=str(getattr(hit, "wake_word", "") or ""),
+                    persona_mode=str(getattr(hit, "persona_mode", "") or ""),
+                    color=getattr(hit, "color", "#FFFFFF"),
+                )
+            )
+
+            await server.broadcast(
                 status(
                     state="recording",
                     hint=f"Recording… ({getattr(hit, 'wake_word', '')})",
@@ -73,6 +81,9 @@ async def _wake_record_loop(
             user_text = (stt.text or "").strip()
             print(f"[m4] stt.text={user_text!r}")
 
+            if user_text:
+                await server.broadcast(user_utterance(text=user_text))
+
             await server.broadcast(status(state="thinking", hint="Thinking…", color=getattr(hit, "color", "#FFFFFF")))
 
             persona_mode = str(getattr(hit, "persona_mode", "auto"))
@@ -85,16 +96,83 @@ async def _wake_record_loop(
                 await server.broadcast(status(state="listening", hint="Listening for wake words", color="#FFFFFF"))
                 continue
 
-            primary = ask_res.primary
-            reply_text = (primary.reply or "").strip()
-            await server.broadcast(
-                assistant_reply(
-                    persona=persona_display_name(persona_mode),
-                    text=reply_text,
-                    color=getattr(hit, "color", "#FFFFFF"),
-                )
-            )
+            def _format_from_provider(provider: Optional[str]) -> str:
+                p = (provider or "").strip().lower()
+                if p == "elevenlabs":
+                    return "mp3"
+                return "wav"
 
+            # Build a quick persona->color map from settings for collective fan-out.
+            persona_color_map: Dict[str, str] = {}
+            try:
+                for ww in (wake_words_cfg or []):
+                    if not isinstance(ww, dict):
+                        continue
+                    mode = str(ww.get("persona_mode") or "").strip().casefold()
+                    c = str(ww.get("color") or "").strip() or "#FFFFFF"
+                    if mode in {"domino", "penny", "jimmy", "collective"}:
+                        persona_color_map[mode] = c
+            except Exception:
+                pass
+
+            primary = ask_res.primary
+            # If the hub responded with collective fanout, render each persona response.
+            if str(primary.persona).strip().casefold() == "collective" and ask_res.responses:
+                for r in ask_res.responses:
+                    persona_key = (r.persona or "").strip().casefold()
+                    reply_text = (r.reply or "").strip()
+                    color = persona_color_map.get(persona_key, "#FFFFFF")
+
+                    await server.broadcast(
+                        assistant_reply(
+                            persona=persona_display_name(persona_key),
+                            text=reply_text,
+                            color=color,
+                        )
+                    )
+
+                    if r.actions:
+                        await server.broadcast(actions(items=r.actions))
+
+                    if r.audio_b64:
+                        await server.broadcast(
+                            tts_audio(
+                                persona=persona_display_name(persona_key),
+                                color=color,
+                                format=_format_from_provider(r.tts_provider),
+                                audio_b64=r.audio_b64,
+                            )
+                        )
+            else:
+                # Normal single-persona response.
+                reply_text = (primary.reply or "").strip()
+                # Prefer hub-returned persona key for labeling when present.
+                persona_key = (primary.persona or "").strip().casefold()
+                label = persona_display_name(persona_key) if persona_key else persona_display_name(persona_mode)
+                color = getattr(hit, "color", "#FFFFFF")
+
+                await server.broadcast(
+                    assistant_reply(
+                        persona=label,
+                        text=reply_text,
+                        color=color,
+                    )
+                )
+
+                if primary.actions:
+                    await server.broadcast(actions(items=primary.actions))
+
+                if primary.audio_b64:
+                    await server.broadcast(
+                        tts_audio(
+                            persona=label,
+                            color=color,
+                            format=_format_from_provider(primary.tts_provider),
+                            audio_b64=primary.audio_b64,
+                        )
+                    )
+
+            # Log audio receipt for debugging (do not decode huge payloads unless needed)
             if primary.audio_b64:
                 try:
                     audio_bytes = base64.b64decode((primary.audio_b64 or "").strip())

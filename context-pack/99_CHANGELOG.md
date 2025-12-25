@@ -8,3 +8,12 @@
   - Fixed `CoreWSServer` demo flag/method name collision in [src/core_ws.py](../wake-word-pc/src/core_ws.py) (renamed flag + demo coroutine).
   - Fixed Pylance/sounddevice typing issues in [src/wake_vosk.py](../wake-word-pc/src/wake_vosk.py) via safe `Any` casts (no runtime behavior change).
   - Updated [src/hub_smoke_test.py](../wake-word-pc/src/hub_smoke_test.py) to handle `None` results from `HubClient.stt()` / `HubClient.ask()`.
+
+- 2025-12-25 — Local LLM migration + wake-word audio improvements:
+  - Replaced legacy “Qwen” naming with “Mistral” naming across the hub and context-pack.
+    - Local LLM env vars are now `MISTRAL_BASE_URL`, `MISTRAL_API_KEY`, `MISTRAL_MODEL`.
+    - `/health` now reports `mistral_base_url`.
+    - Domino persona routes through `llm="mistral"`.
+  - Wake word PC app now tolerates longer generation times (default hub timeout increased) and broadcasts richer overlay events including `tts_audio` / `actions`.
+  - Fish Voice Studio UI delete flow fixed to send `reference_id` in the DELETE request body.
+  - Fish Voice Studio UI and Hub Console UI were modularized to remove inline CSS/JS; Fish UI now uses external `index.css`/`index.js`, and the `fish-ui` nginx container mounts the full UI directory to serve those assets.

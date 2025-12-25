@@ -96,7 +96,7 @@ Config value:
 
 ### 1) STT Endpoint
 
-**Request**
+#### Request (STT)
 
 * `POST {HUB_BASE_URL}/api/stt`
 * Content-Type: `multipart/form-data`
@@ -104,24 +104,24 @@ Config value:
 * File: WAV preferred (`audio/wav`)
   (If you use raw PCM, define it explicitly; WAV is simplest.)
 
-**Response (expected minimal)**
+#### Response (STT, expected minimal)
 
 ```json
 { "text": "transcribed speech here" }
 ```
 
-**Error behavior**
+#### Error behavior
 
 * non-2xx should be treated as failure → overlay shows error → return to Listening state.
 
 ### 2) Ask Endpoint
 
-**Request**
+#### Request (Ask)
 
 * `POST {HUB_BASE_URL}/api/ask`
 * Content-Type: `application/json`
 
-**Minimum request fields (recommended)**
+#### Minimum request fields (recommended)
 
 ```json
 {
@@ -141,7 +141,7 @@ Notes:
 * Include the `wake_word` used to trigger, even if `persona` is Collective.
 * If your hub already has a session concept, pass it; otherwise omit.
 
-**Response (expected minimal)**
+#### Response (Ask, expected minimal)
 
 ```json
 {
@@ -189,44 +189,44 @@ Overlay is a dumb renderer: it does not call the hub directly.
 
 All messages are JSON with a top-level `"type"`.
 
-**status**
+#### status
 
 ```json
 { "type":"status", "state":"listening|recording|transcribing|thinking|speaking|error", "hint":"text", "color":"#RRGGBB" }
 ```
 
-**wake**
+#### wake
 
 ```json
 { "type":"wake", "wake_word":"Domino|Penny|Jimmy|Collective", "persona_mode":"Domino|Penny|Jimmy|Collective", "color":"#RRGGBB" }
 
 ```
 
-**user_utterance**
+#### user_utterance
 
 ```json
 { "type":"user_utterance", "text":"..." }
 ```
 
-**assistant_reply**
+#### assistant_reply
 
 ```json
 { "type":"assistant_reply", "persona":"Domino|Penny|Jimmy", "color":"#RRGGBB", "text":"..." }
 ```
 
-**tts_audio**
+#### tts_audio
 
 ```json
 { "type":"tts_audio", "persona":"Domino|Penny|Jimmy", "color":"#RRGGBB", "format":"wav|mp3", "audio_b64":"..." }
 ```
 
-**actions (optional but useful)**
+#### actions (optional but useful)
 
 ```json
 { "type":"actions", "items":[ ... ] }
 ```
 
-**error**
+#### error
 
 ```json
 { "type":"error", "stage":"stt|ask|audio|wake", "message":"human readable message" }
@@ -262,17 +262,17 @@ Keep all integration-sensitive values in config (not hardcoded).
 
 ## State machine (must be explicit in code)
 
-**Listening**
+### Listening
 
 * mic frames feed wake engine
 * overlay: `status=listening`
 
-**WakeDetected(wake_word, persona_mode)**
+### WakeDetected(wake_word, persona_mode)
 
 * chirp (optional)
 * overlay: `wake` + `status=recording`
 
-**Recording**
+### Recording
 
 * capture utterance until:
 
@@ -280,17 +280,17 @@ Keep all integration-sensitive values in config (not hardcoded).
   * max duration
 * then stop
 
-**Transcribing**
+### Transcribing
 
 * send WAV to hub `/api/stt`
 * overlay `status=transcribing`
 
-**Thinking**
+### Thinking
 
 * send text to hub `/api/ask` with persona_mode + wake_word metadata
 * overlay `status=thinking`
 
-**Speaking**
+### Speaking
 
 * if `audio_b64` returned:
 
@@ -298,7 +298,7 @@ Keep all integration-sensitive values in config (not hardcoded).
   * overlay `status=speaking`
 * else just display text and return to listening
 
-**Error**
+### Error
 
 * emit overlay error
 * return to listening

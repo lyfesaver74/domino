@@ -4,37 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Fish Voice Studio (Local)</title>
-  <style>
-    :root { --bg:#0b0f14; --card:#101723; --text:#e7eef7; --muted:#9bb0c7; --accent:#4aa3ff; --bad:#ff4a4a; --good:#2fd67d; }
-    body { margin:0; font-family:system-ui,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--text); }
-    header { padding:18px 20px; border-bottom:1px solid #1a2636; display:flex; gap:14px; align-items:center; }
-    header h1 { font-size:16px; margin:0; font-weight:650; letter-spacing:.2px; }
-    header .pill { font-size:12px; padding:5px 10px; border-radius:999px; background:#152235; color:var(--muted); }
-    header .pill.ok { background:rgba(47,214,125,.12); color:var(--good); border:1px solid rgba(47,214,125,.25); }
-    header .pill.bad { background:rgba(255,74,74,.10); color:var(--bad); border:1px solid rgba(255,74,74,.25); }
-    main { padding:18px 20px; display:grid; grid-template-columns: 360px 1fr; gap:16px; }
-    .card { background:var(--card); border:1px solid #1a2636; border-radius:14px; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
-    .card h2 { margin:0 0 10px; font-size:13px; color:var(--muted); letter-spacing:.2px; text-transform:uppercase; }
-    label { display:block; font-size:12px; color:var(--muted); margin:10px 0 6px; }
-    input[type="text"], textarea, select { width:100%; box-sizing:border-box; background:#0d1420; border:1px solid #21314a; color:var(--text); border-radius:10px; padding:10px; outline:none; }
-    textarea { min-height:90px; resize:vertical; }
-    .row { display:flex; gap:10px; }
-    .row > * { flex:1; }
-    button { background:linear-gradient(180deg,#2b86ff,#1c6fe0); border:0; color:white; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:650; }
-    button.secondary { background:#142236; color:var(--text); border:1px solid #21314a; font-weight:600; }
-    button.danger { background:#2a1313; border:1px solid rgba(255,74,74,.35); color:#ffb3b3; }
-    button:disabled { opacity:.55; cursor:not-allowed; }
-    .small { font-size:12px; color:var(--muted); line-height:1.35; }
-    .list { margin-top:10px; border-top:1px solid #1a2636; padding-top:10px; max-height:360px; overflow:auto; }
-    .item { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px; border:1px solid #1a2636; border-radius:12px; margin:8px 0; background:#0d1420; }
-    .item b { font-size:13px; }
-    .item .meta { font-size:12px; color:var(--muted); }
-    .toast { margin-top:10px; font-size:12px; color:var(--muted); white-space:pre-wrap; background:#0d1420; border:1px solid #1a2636; border-radius:12px; padding:10px; max-height:140px; overflow:auto; }
-    audio { width:100%; margin-top:10px; }
-    .hr { height:1px; background:#1a2636; margin:12px 0; }
-    .hint { font-size:12px; color:var(--muted); margin-top:8px; }
-    .kbd { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; background:#0d1420; border:1px solid #1a2636; border-radius:8px; padding:2px 6px; }
-  </style>
+  <link rel="stylesheet" href="index.css" />
 </head>
 <body>
   <header>
@@ -57,16 +27,16 @@
       <div class="hr"></div>
 
       <h2>Add New Reference</h2>
-      <label>Reference ID (unique)</label>
+      <label for="addId">Reference ID (unique)</label>
       <input id="addId" type="text" placeholder="e.g. domino_v3" />
 
-      <label>Audio file</label>
+      <label for="addAudio">Audio file</label>
       <input id="addAudio" type="file" accept="audio/*" />
 
-      <label>Transcript (must match audio)</label>
+      <label for="addText">Transcript (must match audio)</label>
       <textarea id="addText" placeholder="Paste the exact transcript of the clip…"></textarea>
 
-      <div class="row" style="margin-top:10px;">
+      <div class="row mt10">
         <button id="btnAdd">Add reference</button>
         <button id="btnClearAdd" class="secondary">Clear</button>
       </div>
@@ -81,24 +51,24 @@
     <section class="card">
       <h2>Test / TTS</h2>
 
-      <label>Use reference voice</label>
+      <label for="ttsRef">Use reference voice</label>
       <select id="ttsRef">
         <option value="">(none)</option>
       </select>
 
-      <label>Text</label>
+      <label for="ttsText">Text</label>
       <textarea id="ttsText">Testing Fish. Domino voice should be active if selected.</textarea>
 
       <div class="row">
         <div>
-          <label>Format</label>
+          <label for="ttsFormat">Format</label>
           <select id="ttsFormat">
             <option value="wav" selected>wav</option>
             <option value="mp3">mp3</option>
           </select>
         </div>
         <div>
-          <label>Normalize</label>
+          <label for="ttsNormalize">Normalize</label>
           <select id="ttsNormalize">
             <option value="true" selected>true</option>
             <option value="false">false</option>
@@ -106,279 +76,18 @@
         </div>
       </div>
 
-      <div class="row" style="margin-top:10px;">
+      <div class="row mt10">
         <button id="btnSpeak">Speak & Play</button>
         <button id="btnDownload" class="secondary" disabled>Download last audio</button>
       </div>
 
       <audio id="player" controls></audio>
 
-      <div class="small" style="margin-top:10px;">
+      <div class="small mt10">
         If the first request takes longer, that’s model warm-up / compilation. Subsequent requests should be faster.
       </div>
     </section>
   </main>
-
-  <script>
-    const $ = (id) => document.getElementById(id);
-
-    const toast = (msg) => {
-      const t = $("toast");
-      t.textContent = msg;
-      t.scrollTop = t.scrollHeight;
-    };
-
-    const apiFetch = async (path, opts = {}) => {
-      const res = await fetch("/api" + path, {
-        ...opts,
-        headers: {
-          "Accept": "application/json",
-          ...(opts.headers || {})
-        }
-      });
-      return res;
-    };
-
-    let lastBlob = null;
-    let lastExt = "wav";
-
-    async function checkHealth() {
-      try {
-        const res = await apiFetch("/v1/health");
-        const pill = $("statusPill");
-        if (res.ok) {
-          pill.textContent = "API OK";
-          pill.className = "pill ok";
-          return true;
-        }
-        pill.textContent = "API error (" + res.status + ")";
-        pill.className = "pill bad";
-        return false;
-      } catch (e) {
-        const pill = $("statusPill");
-        pill.textContent = "API unreachable";
-        pill.className = "pill bad";
-        return false;
-      }
-    }
-
-    async function refreshRefs() {
-      toast("Refreshing reference list…");
-      const list = $("refList");
-      list.innerHTML = "";
-
-      const sel = $("ttsRef");
-      const keep = sel.value;
-      sel.innerHTML = `<option value="">(none)</option>`;
-
-      const res = await apiFetch("/v1/references/list");
-      const ct = res.headers.get("content-type") || "";
-      let data = null;
-
-      try {
-        // Most builds will honor Accept: application/json
-        if (ct.includes("application/json")) {
-          data = await res.json();
-        } else {
-          // Fallback: try json anyway
-          data = await res.json();
-        }
-      } catch {
-        toast("Could not parse list response as JSON. If your server forces msgpack, we can add a msgpack decoder.\nStatus: " + res.status);
-        return;
-      }
-
-      // data could be { reference_ids: [...] } or just [...]
-      const ids = Array.isArray(data) ? data
-               : (data.reference_ids || data.references || data.items || []);
-
-      if (!Array.isArray(ids)) {
-        toast("Unexpected list format:\n" + JSON.stringify(data, null, 2));
-        return;
-      }
-
-      if (ids.length === 0) {
-        list.innerHTML = `<div class="small">No references yet.</div>`;
-      } else {
-        for (const id of ids) {
-          const div = document.createElement("div");
-          div.className = "item";
-          div.innerHTML = `
-            <div>
-              <b>${id}</b><div class="meta">reference_id</div>
-            </div>
-            <div class="row" style="gap:8px; flex:0;">
-              <button class="secondary" data-use="${id}">Use</button>
-              <button class="danger" data-del="${id}">Delete</button>
-            </div>
-          `;
-          list.appendChild(div);
-
-          const opt = document.createElement("option");
-          opt.value = id;
-          opt.textContent = id;
-          sel.appendChild(opt);
-        }
-      }
-
-      // restore selection if possible
-      if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
-
-      // wire buttons
-      list.querySelectorAll("[data-use]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          $("ttsRef").value = btn.getAttribute("data-use");
-          toast("Selected reference_id: " + $("ttsRef").value);
-        });
-      });
-
-      list.querySelectorAll("[data-del]").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const id = btn.getAttribute("data-del");
-          if (!confirm(`Delete reference "${id}"?`)) return;
-          await deleteRef(id);
-        });
-      });
-
-      toast("Reference list updated (" + ids.length + ").");
-    }
-
-    async function addRef() {
-      const id = $("addId").value.trim();
-      const file = $("addAudio").files?.[0];
-      const text = $("addText").value.trim();
-
-      if (!id) return toast("Add reference: missing ID.");
-      if (!file) return toast("Add reference: please choose an audio file.");
-      if (!text) return toast("Add reference: transcript is required.");
-
-      toast(`Uploading reference "${id}"…`);
-
-      const fd = new FormData();
-      fd.append("id", id);
-      fd.append("audio", file);
-      fd.append("text", text);
-
-      const res = await fetch("/api/v1/references/add", {
-        method: "POST",
-        body: fd,
-        headers: { "Accept": "application/json" }
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        toast(`Add failed (${res.status}).\n${body}`);
-        return;
-      }
-
-      // server might respond json or msgpack; just show something
-      const bodyText = await res.text().catch(() => "(ok)");
-      toast(`Added "${id}" ✅\n${bodyText}`);
-
-      await refreshRefs();
-    }
-
-    async function deleteRef(id) {
-  if (!id) return;
-  if (!confirm(`Delete reference "${id}"? This cannot be undone.`)) return;
-
-  const url = `${API_BASE}/v1/references/delete?id=${encodeURIComponent(id)}`;
-
-  // Fish is picky: it wants msgpack headers even on DELETE.
-  const headers = {
-    "Accept": "application/msgpack",
-    "Content-Type": "application/msgpack",
-  };
-
-  try {
-    // Attempt 1: DELETE with empty body
-    let res = await fetch(url, { method: "DELETE", headers, body: "" });
-
-    // Attempt 2: some environments dislike DELETE bodies; try without body
-    if (!res.ok) {
-      res = await fetch(url, { method: "DELETE", headers });
-    }
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Delete failed (${res.status}). ${text}`);
-    }
-
-    toast(`Deleted "${id}" ✅`);
-    await refreshRefs();
-  } catch (e) {
-    toast(`Delete failed ❌ ${e.message || e}`);
-  }
-}
-
-    async function speak() {
-      const text = $("ttsText").value.trim();
-      const reference_id = $("ttsRef").value || null;
-      const format = $("ttsFormat").value;
-      const normalize = $("ttsNormalize").value === "true";
-
-      if (!text) return toast("TTS: text is empty.");
-
-      const payload = {
-        text,
-        format,
-        reference_id,
-        references: [],
-        normalize,
-        streaming: false
-      };
-
-      toast("Generating audio…");
-
-      const res = await fetch("/api/v1/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "audio/wav, application/octet-stream" },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        toast(`TTS failed (${res.status}).\n${body}`);
-        return;
-      }
-
-      const blob = await res.blob();
-      lastBlob = blob;
-      lastExt = format;
-
-      const url = URL.createObjectURL(blob);
-      const player = $("player");
-      player.src = url;
-      player.play().catch(() => {});
-      $("btnDownload").disabled = false;
-
-      toast(`Audio ready ✅ (${Math.round(blob.size/1024)} KB)\nreference_id=${reference_id ?? "(none)"}`);
-    }
-
-    function downloadLast() {
-      if (!lastBlob) return;
-      const a = document.createElement("a");
-      const url = URL.createObjectURL(lastBlob);
-      a.href = url;
-      a.download = "fish_tts." + (lastExt || "wav");
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    }
-
-    $("btnRefresh").addEventListener("click", refreshRefs);
-    $("btnHealth").addEventListener("click", async () => { await checkHealth(); toast("Health checked."); });
-    $("btnAdd").addEventListener("click", addRef);
-    $("btnClearAdd").addEventListener("click", () => { $("addId").value=""; $("addText").value=""; $("addAudio").value=""; toast("Cleared."); });
-    $("btnSpeak").addEventListener("click", speak);
-    $("btnDownload").addEventListener("click", downloadLast);
-
-    (async () => {
-      const ok = await checkHealth();
-      if (ok) await refreshRefs();
-      else toast("API unreachable. Make sure fish-speech-server is up and Nginx proxy is configured.");
-    })();
-  </script>
+  <script src="index.js" defer></script>
 </body>
 </html>

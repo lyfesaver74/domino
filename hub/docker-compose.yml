@@ -77,8 +77,10 @@ services:
     ports:
       - "18081:80"
     volumes:
-      - /opt/domino_hub/ui/index.html:/usr/share/nginx/html/index.html:ro
-      - /opt/domino_hub/ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # UI assets are mounted from the host. Override DOMINO_UI_DIR for non-/opt installs.
+      # Example (local dev): DOMINO_UI_DIR=./ui
+      - ${DOMINO_UI_DIR:-/opt/domino_hub/ui}:/usr/share/nginx/html:ro
+      - ${DOMINO_UI_DIR:-/opt/domino_hub/ui}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
     depends_on:
       - fish-speech-server

@@ -50,7 +50,7 @@ load_dotenv()
 app = FastAPI(
     title="Domino & Friends Hub",
     version="0.2.0",
-    description="Routes requests to Domino (Qwen), Penny (ChatGPT), and Jimmy (Gemini).",
+    description="Routes requests to Domino (Mistral), Penny (ChatGPT), and Jimmy (Gemini).",
 )
 
 
@@ -58,14 +58,14 @@ app = FastAPI(
 # LLM client setup
 # -------------------------
 
-# Qwen (Domino) via OpenAI-compatible endpoint (LM Studio etc.)
-QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "http://127.0.0.1:1234/v1")
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "qwen-local")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen/qwen3-14b")
+# Mistral (Domino) via OpenAI-compatible endpoint (LM Studio)
+MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "http://127.0.0.1:1234/v1")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "mistral-local")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-nemo-base-2407")
 
-qwen_client = OpenAI(
-    base_url=QWEN_BASE_URL,
-    api_key=QWEN_API_KEY,
+mistral_client = OpenAI(
+    base_url=MISTRAL_BASE_URL,
+    api_key=MISTRAL_API_KEY,
 )
 
 # ChatGPT (Penny)
@@ -377,7 +377,7 @@ async def generate_tts(persona: str, text: str) -> tuple[Optional[str], Optional
 # LLM call helpers
 # -------------------------
 
-async def call_qwen(system_prompt: str, user_text: str, context: Optional[Context]) -> str:
+async def call_mistral(system_prompt: str, user_text: str, context: Optional[Context]) -> str:
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system_prompt},
     ]
@@ -393,8 +393,8 @@ async def call_qwen(system_prompt: str, user_text: str, context: Optional[Contex
         )
     messages.append({"role": "user", "content": user_text})
 
-    resp = qwen_client.chat.completions.create(
-        model=QWEN_MODEL,
+    resp = mistral_client.chat.completions.create(
+        model=MISTRAL_MODEL,
         messages=messages,
         temperature=0.6,
     )
@@ -459,8 +459,8 @@ async def route_one_persona(persona_key: str, user_text: str, ctx: Context) -> t
     llm = persona["llm"]
     system_prompt = persona["system_prompt"]
 
-    if llm == "qwen":
-        raw_reply = await call_qwen(system_prompt, user_text, ctx)
+    if llm == "mistral":
+        raw_reply = await call_mistral(system_prompt, user_text, ctx)
     elif llm == "chatgpt":
         raw_reply = await call_chatgpt(system_prompt, user_text, ctx)
     elif llm == "gemini":
@@ -509,7 +509,7 @@ async def root() -> HTMLResponse:
 async def health() -> Dict[str, Any]:
     return {
         "status": "ok",
-        "qwen_base_url": QWEN_BASE_URL,
+        "mistral_base_url": MISTRAL_BASE_URL,
         "has_openai": bool(openai_client),
         "gemini_enabled": gemini_enabled,
         "ha_enabled": ha_enabled,

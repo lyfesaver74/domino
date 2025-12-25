@@ -3,7 +3,7 @@
     "base_url": "http://192.168.0.121:2424",
     "stt_path": "/api/stt",
     "ask_path": "/api/ask",
-    "timeout_s": 60,
+    "timeout_s": 180,
     "health_path": "/health",
     "version_path": "/version"
   },

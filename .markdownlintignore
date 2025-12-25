@@ -1,0 +1,5 @@
+# Vendored upstream project (keep as-is)
+services/tts-fish/fish-speech/**
+
+# Local virtualenvs / dependencies
+wake-word-pc/.venv/**

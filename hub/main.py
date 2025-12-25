@@ -66,7 +66,7 @@ load_dotenv()
 app = FastAPI(
     title="Domino & Friends Hub",
     version="0.2.0",
-    description="Routes requests to Domino (Qwen), Penny (ChatGPT), and Jimmy (Gemini).",
+    description="Routes requests to Domino (Mistral), Penny (ChatGPT), and Jimmy (Gemini).",
 )
 
 @app.post("/api/stt", response_model=STTResponse)
@@ -336,15 +336,15 @@ def _infer_promoted_patch_from_text(user_text: str) -> tuple[Dict[str, Any], Lis
 # LLM client setup
 # -------------------------
 
-# Local OpenAI-compatible endpoint (LM Studio etc.). Historically named "qwen" in this codebase.
-QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "http://127.0.0.1:1234/v1")
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "qwen-local")
-# Default updated to LM Studio model identifier for Mistral NeMo Base 2407.
-QWEN_MODEL = os.getenv("QWEN_MODEL", "mistral-nemo-base-2407")
+# Local OpenAI-compatible endpoint (LM Studio).
+MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "http://127.0.0.1:1234/v1")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "mistral-local")
+# LM Studio model identifier (also used as the mode name)
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-nemo-base-2407")
 
-qwen_client = OpenAI(
-    base_url=QWEN_BASE_URL,
-    api_key=QWEN_API_KEY,
+mistral_client = OpenAI(
+    base_url=MISTRAL_BASE_URL,
+    api_key=MISTRAL_API_KEY,
 )
 
 # ChatGPT (Penny)
@@ -821,7 +821,7 @@ async def api_history_clear(session_id: Optional[str] = None) -> Dict[str, Any]:
 # LLM call helpers
 # -------------------------
 
-async def call_qwen(system_prompt: str, user_text: str, context: Optional[Context]) -> str:
+async def call_mistral(system_prompt: str, user_text: str, context: Optional[Context]) -> str:
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system_prompt},
     ]
@@ -838,8 +838,8 @@ async def call_qwen(system_prompt: str, user_text: str, context: Optional[Contex
     messages.append({"role": "user", "content": user_text})
 
     def _do_call() -> str:
-        resp = qwen_client.chat.completions.create(
-            model=QWEN_MODEL,
+        resp = mistral_client.chat.completions.create(
+            model=MISTRAL_MODEL,
             messages=cast(Any, messages),
             temperature=0.6,
         )
@@ -984,8 +984,8 @@ async def route_one_persona(persona_key: str, user_text: str, ctx: Context, sess
     # Persist this turn (store AFTER computing context so we don't echo the current user msg twice)
     memory_store.add_chat_message(session_id, persona_key, "user", user_text or "")
 
-    if llm in ("qwen", "lmstudio"):
-        raw_reply = await call_qwen(system_prompt, user_text, ctx)
+    if llm in ("mistral", "lmstudio"):
+        raw_reply = await call_mistral(system_prompt, user_text, ctx)
     elif llm == "chatgpt":
         raw_reply = await call_chatgpt(system_prompt, user_text, ctx)
     elif llm == "gemini":
@@ -993,7 +993,7 @@ async def route_one_persona(persona_key: str, user_text: str, ctx: Context, sess
     else:
         raise HTTPException(
             status_code=500,
-            detail=f"Unsupported LLM type '{llm}'. Supported: qwen, lmstudio, chatgpt, gemini",
+            detail=f"Unsupported LLM type '{llm}'. Supported: mistral, lmstudio, chatgpt, gemini",
         )
 
     cleaned, actions = extract_actions(raw_reply)
@@ -1039,14 +1039,17 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/", response_class=HTMLResponse)
 async def root() -> HTMLResponse:
     html_path = BASE_DIR / "console.html"
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        html_path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @app.get("/health")
 async def health() -> Dict[str, Any]:
     return {
         "status": "ok",
-        "qwen_base_url": QWEN_BASE_URL,
+        "mistral_base_url": MISTRAL_BASE_URL,
         "has_openai": bool(openai_client),
         "gemini_enabled": gemini_enabled,
         "ha_enabled": ha_enabled,

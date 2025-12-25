@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 PERSONAS: Dict[str, Dict[str, Any]] = {
     "domino": {
-        "llm": "lmstudio",
+        "llm": "mistral",
         "system_prompt": (
             "You are Domino, Chad's smart home and general-purpose AI assistant. "
             "You are androgynous with an effeminate robot vibe. "

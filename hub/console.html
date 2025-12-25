@@ -2,34 +2,262 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Domino & Friends Console</title>
-  <link rel="stylesheet" href="/static/console.css" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Domino Hub</title>
+  <link rel="stylesheet" href="/static/console.css?v=20251225" />
 </head>
 <body>
-  <header>
-    <h1>Domino & Friends Console</h1>
-    <div style="display:flex; align-items:center;">
-      <div id="persona-select">
-        <label><input type="radio" name="persona" value="domino"> Domino</label>
-        <label><input type="radio" name="persona" value="penny"> Penny</label>
-        <label><input type="radio" name="persona" value="jimmy"> Jimmy</label>
-        <label><input type="radio" name="persona" value="auto" checked> Auto</label>
+  <header class="topbar">
+    <div class="brand" role="banner">
+      <div class="brand-mark" aria-hidden="true">D</div>
+      <div class="brand-text">
+        <div class="brand-title">Domino</div>
+        <div class="brand-subtitle">Hub Console</div>
       </div>
-      <span id="status"></span>
-      <button id="play-btn" disabled title="Play last server audio">Play</button>
-      <label style="margin-left:12px; font-size: 0.95em; user-select:none;">
-        <input type="checkbox" id="auto-promote" /> Auto-promote
+    </div>
+
+    <nav class="topnav" aria-label="Primary">
+      <button class="nav-btn is-active" id="nav-chat" type="button" data-page="chat">Chat</button>
+      <button class="nav-btn" id="nav-settings" type="button" data-page="settings">Settings</button>
+    </nav>
+
+    <div class="top-actions">
+      <div class="status-pill" id="status-pill" title="Hub status">
+        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        <span class="status-text" id="status-text">Connecting…</span>
+      </div>
+
+      <button id="play-btn" class="btn btn-ghost" disabled type="button" title="Play last server audio">Play</button>
+
+      <label class="toggle">
+        <input type="checkbox" id="auto-promote" />
+        <span class="toggle-ui" aria-hidden="true"></span>
+        <span class="toggle-label">Auto-promote</span>
       </label>
     </div>
   </header>
 
-  <div id="chat"></div>
+  <main class="shell">
+    <section class="page" id="page-chat" aria-label="Chat">
+      <div class="layout">
+        <section class="panel panel-main" aria-label="Conversation">
+          <header class="panel-header">
+            <div>
+              <div class="panel-title">Conversation</div>
+              <div class="panel-subtitle" id="session-label">Session: …</div>
+            </div>
+            <div class="panel-actions">
+              <button class="btn btn-ghost" id="new-session" type="button">New session</button>
+              <button class="btn btn-ghost" id="clear-history" type="button">Clear history</button>
+            </div>
+          </header>
 
-  <div id="input-bar">
-    <button id="mic-btn" title="Click to start/stop listening">🎙</button>
-    <textarea id="text-input" rows="2" placeholder="Type a message... (Enter to send, Shift+Enter for newline)"></textarea>
-    <button id="send-btn">Send</button>
-  </div>
-  <script src="/static/console.js"></script>
+          <div id="chat" class="chat" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+          <footer class="composer" aria-label="Message composer">
+            <div class="composer-shell">
+              <div class="composer-edge composer-edge-left">
+                <label class="sr-only" for="persona">Persona</label>
+                <select id="persona" class="persona" title="Choose who replies">
+                  <option value="auto" selected>Auto</option>
+                  <option value="domino">Domino</option>
+                  <option value="penny">Penny</option>
+                  <option value="jimmy">Jimmy</option>
+                </select>
+              </div>
+
+              <textarea
+                id="text-input"
+                rows="2"
+                placeholder="Message… (Enter to send, Shift+Enter for newline)"
+                aria-label="Message"
+              ></textarea>
+
+              <div class="composer-edge composer-edge-right">
+                <button id="mic-btn" class="icon-btn" type="button" title="Record speech (Whisper STT)">
+                  <span class="icon" aria-hidden="true">⦿</span>
+                  <span class="sr-only">Microphone</span>
+                </button>
+                <button id="send-btn" class="btn btn-primary" type="button">Send</button>
+              </div>
+            </div>
+            <div class="composer-hint">Enter to send · Shift+Enter for newline</div>
+          </footer>
+        </section>
+
+        <aside class="panel panel-side" aria-label="Panels">
+          <section class="card" aria-label="Animation">
+            <header class="card-header">
+              <div class="card-title">Animation</div>
+              <div class="card-subtitle">Reserved 3:2 viewport</div>
+            </header>
+            <div class="anim-frame" id="anim-frame" aria-label="Animation placeholder">
+              <div class="anim-placeholder">
+                <div class="anim-title">Animation window</div>
+                <div class="anim-subtitle">3:2 · placeholder</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" aria-label="Project status">
+            <header class="card-header">
+              <div class="card-title">Project status</div>
+              <div class="card-subtitle">Live from hub</div>
+            </header>
+            <div class="kv" role="list">
+              <div class="kv-row" role="listitem"><div class="k">Hub</div><div class="v" id="kv-hub">—</div></div>
+              <div class="kv-row" role="listitem"><div class="k">Mistral</div><div class="v" id="kv-mistral">—</div></div>
+              <div class="kv-row" role="listitem"><div class="k">TTS provider</div><div class="v" id="kv-tts">—</div></div>
+              <div class="kv-row" role="listitem"><div class="k">Fish enabled</div><div class="v" id="kv-fish">—</div></div>
+              <div class="kv-row" role="listitem"><div class="k">Home Assistant</div><div class="v" id="kv-ha">—</div></div>
+              <div class="kv-row" role="listitem"><div class="k">Gemini</div><div class="v" id="kv-gemini">—</div></div>
+              <div class="kv-row" role="listitem"><div class="k">Time</div><div class="v" id="kv-time">—</div></div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-ghost" id="jump-settings" type="button">Open settings</button>
+              <button class="btn btn-ghost" id="refresh-status" type="button">Refresh</button>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section class="page is-hidden" id="page-settings" aria-label="Settings">
+      <div class="settings-layout">
+        <section class="panel" aria-label="Editable settings">
+          <header class="panel-header">
+            <div>
+              <div class="panel-title">Settings</div>
+              <div class="panel-subtitle">Edits are saved to hub promoted-state</div>
+            </div>
+            <div class="panel-actions">
+              <button class="btn btn-ghost" id="settings-reload" type="button">Reload</button>
+              <button class="btn btn-primary" id="settings-save" type="button">Save</button>
+            </div>
+          </header>
+
+          <div class="form" id="settings-form">
+            <div class="form-section">
+              <div class="form-title">Core</div>
+              <div class="grid2">
+                <label class="field">
+                  <span class="label">Timezone</span>
+                  <input id="set-timezone" type="text" placeholder="America/New_York" />
+                </label>
+                <label class="field">
+                  <span class="label">Location</span>
+                  <input id="set-location" type="text" placeholder="City, State" />
+                </label>
+                <label class="field">
+                  <span class="label">Preferred units</span>
+                  <select id="set-units">
+                    <option value="">(unset)</option>
+                    <option value="imperial">imperial</option>
+                    <option value="metric">metric</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Retrieval memory</span>
+                  <select id="set-retrieval">
+                    <option value="false">off</option>
+                    <option value="true">on</option>
+                  </select>
+                </label>
+              </div>
+              <label class="field">
+                <span class="label">Working rules</span>
+                <textarea id="set-working-rules" rows="4" placeholder="Short persistent constraints / preferences"></textarea>
+              </label>
+              <label class="field">
+                <span class="label">Tech stack</span>
+                <textarea id="set-tech-stack" rows="3" placeholder="Your stack, tools, constraints"></textarea>
+              </label>
+            </div>
+
+            <div class="form-section">
+              <div class="form-title">Services</div>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">Home Assistant base URL</span>
+                  <input id="set-ha" type="url" placeholder="http://homeassistant.local:8123" />
+                </label>
+                <label class="field">
+                  <span class="label">Mistral base URL</span>
+                  <input id="set-mistral" type="url" placeholder="http://host.docker.internal:1234/v1" />
+                </label>
+                <label class="field">
+                  <span class="label">Fish TTS base URL</span>
+                  <input id="set-fish" type="url" placeholder="http://fish-speech-server:8080" />
+                </label>
+              </div>
+
+              <div class="hint">
+                Note: settings here persist in promoted-state. Environment variables still control runtime wiring.
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="form-title">Speech</div>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">TTS override · Domino</span>
+                  <select id="set-tts-domino">
+                    <option value="auto">auto</option>
+                    <option value="fish">fish</option>
+                    <option value="elevenlabs">elevenlabs</option>
+                    <option value="browser">browser</option>
+                    <option value="off">off</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">TTS override · Penny</span>
+                  <select id="set-tts-penny">
+                    <option value="auto">auto</option>
+                    <option value="fish">fish</option>
+                    <option value="elevenlabs">elevenlabs</option>
+                    <option value="browser">browser</option>
+                    <option value="off">off</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">TTS override · Jimmy</span>
+                  <select id="set-tts-jimmy">
+                    <option value="auto">auto</option>
+                    <option value="fish">fish</option>
+                    <option value="elevenlabs">elevenlabs</option>
+                    <option value="browser">browser</option>
+                    <option value="off">off</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel" aria-label="Read-only diagnostics">
+          <header class="panel-header">
+            <div>
+              <div class="panel-title">Diagnostics</div>
+              <div class="panel-subtitle">Read-only environment-backed signals</div>
+            </div>
+          </header>
+          <div class="kv" role="list">
+            <div class="kv-row" role="listitem"><div class="k">status</div><div class="v" id="diag-status">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">mistral_base_url</div><div class="v" id="diag-mistral-url">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">has_openai</div><div class="v" id="diag-has-openai">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">tts_provider</div><div class="v" id="diag-tts-provider">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">fish_enabled</div><div class="v" id="diag-fish-enabled">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">ha_enabled</div><div class="v" id="diag-ha-enabled">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">gemini_enabled</div><div class="v" id="diag-gemini-enabled">—</div></div>
+          </div>
+          <div class="hint">
+            Missing knobs will show up here first; if you want any of these to be editable in-UI, we’ll add endpoints next.
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/console.js?v=20251225" defer></script>
 </body>
 </html>

@@ -67,7 +67,7 @@ This repo includes the overlay content at:
 
 - `overlay/Content/index.html`
 
-In Streamer.bot HTMLWindowsOverlay (from https://github.com/Streamerbot/html-windows-overlay), point it at that `index.html` file.
+In Streamer.bot HTMLWindowsOverlay (from <https://github.com/Streamerbot/html-windows-overlay>), point it at that `index.html` file.
 
 When the overlay connects, the top-left indicator should show `ONLINE` and you should see a short demo state sequence plus a `Domino: Milestone 1 websocket OK ...` line in the ticker.
 

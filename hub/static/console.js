@@ -1,10 +1,99 @@
+/* Domino Hub Console (modern UI)
+ * - Chat: SSE streaming via /api/ask_stream
+ * - Audio: plays queued server audio /api/audio/{id}
+ * - STT: Whisper recorder via /api/stt (or webkitSpeechRecognition fallback)
+ * - Settings: reads/patches promoted-state via /api/memory/promoted
+ */
+
 const chatEl = document.getElementById('chat');
 const inputEl = document.getElementById('text-input');
 const sendBtn = document.getElementById('send-btn');
-const statusEl = document.getElementById('status');
 const micBtn = document.getElementById('mic-btn');
 const playBtn = document.getElementById('play-btn');
 const autoPromoteEl = document.getElementById('auto-promote');
+const personaEl = document.getElementById('persona');
+
+const statusTextEl = document.getElementById('status-text');
+const statusDotEl = document.getElementById('status-dot');
+const sessionLabelEl = document.getElementById('session-label');
+
+const navChatBtn = document.getElementById('nav-chat');
+const navSettingsBtn = document.getElementById('nav-settings');
+const pageChat = document.getElementById('page-chat');
+const pageSettings = document.getElementById('page-settings');
+
+const btnNewSession = document.getElementById('new-session');
+const btnClearHistory = document.getElementById('clear-history');
+const btnJumpSettings = document.getElementById('jump-settings');
+const btnRefreshStatus = document.getElementById('refresh-status');
+
+// Status KV (chat side panel)
+const kvHub = document.getElementById('kv-hub');
+const kvMistral = document.getElementById('kv-mistral');
+const kvTts = document.getElementById('kv-tts');
+const kvFish = document.getElementById('kv-fish');
+const kvHa = document.getElementById('kv-ha');
+const kvGemini = document.getElementById('kv-gemini');
+const kvTime = document.getElementById('kv-time');
+
+// Settings controls
+const btnSettingsReload = document.getElementById('settings-reload');
+const btnSettingsSave = document.getElementById('settings-save');
+const setTimezone = document.getElementById('set-timezone');
+const setLocation = document.getElementById('set-location');
+const setUnits = document.getElementById('set-units');
+const setRetrieval = document.getElementById('set-retrieval');
+const setWorkingRules = document.getElementById('set-working-rules');
+const setTechStack = document.getElementById('set-tech-stack');
+const setHa = document.getElementById('set-ha');
+const setMistral = document.getElementById('set-mistral');
+const setFish = document.getElementById('set-fish');
+const setTtsDomino = document.getElementById('set-tts-domino');
+const setTtsPenny = document.getElementById('set-tts-penny');
+const setTtsJimmy = document.getElementById('set-tts-jimmy');
+
+// Diagnostics (read-only)
+const diagStatus = document.getElementById('diag-status');
+const diagMistralUrl = document.getElementById('diag-mistral-url');
+const diagHasOpenai = document.getElementById('diag-has-openai');
+const diagTtsProvider = document.getElementById('diag-tts-provider');
+const diagFishEnabled = document.getElementById('diag-fish-enabled');
+const diagHaEnabled = document.getElementById('diag-ha-enabled');
+const diagGeminiEnabled = document.getElementById('diag-gemini-enabled');
+
+function qsBool(v) {
+  return v ? 'true' : 'false';
+}
+
+function setStatus(text, level) {
+  if (statusTextEl) statusTextEl.textContent = text || '';
+  if (statusDotEl) {
+    statusDotEl.classList.remove('ok', 'warn');
+    if (level === 'ok') statusDotEl.classList.add('ok');
+    if (level === 'warn') statusDotEl.classList.add('warn');
+  }
+}
+
+function setActivePage(page) {
+  const isChat = page === 'chat';
+  if (pageChat) pageChat.classList.toggle('is-hidden', !isChat);
+  if (pageSettings) pageSettings.classList.toggle('is-hidden', isChat);
+
+  if (navChatBtn) navChatBtn.classList.toggle('is-active', isChat);
+  if (navSettingsBtn) navSettingsBtn.classList.toggle('is-active', !isChat);
+}
+
+function safeJson(v) {
+  try {
+    return JSON.stringify(v);
+  } catch (_) {
+    return String(v);
+  }
+}
+
+function clearChatUI() {
+  if (chatEl) chatEl.textContent = '';
+}
 
 function loadAutoPromote() {
   try {
@@ -44,27 +133,67 @@ function getOrCreateSessionId() {
   }
 }
 
+function setSessionId(newId) {
+  try {
+    const key = 'dominoHubSessionId';
+    localStorage.setItem(key, newId);
+  } catch (_) {}
+}
+
+function refreshSessionLabel() {
+  const sid = getOrCreateSessionId();
+  if (sessionLabelEl) sessionLabelEl.textContent = `Session: ${sid || 'default'}`;
+}
+
 // ---- persona + UI helpers ----
 function getPersona() {
-  return document.querySelector('input[name="persona"]:checked').value;
+  return (personaEl && personaEl.value ? personaEl.value : 'auto');
+}
+
+function personaLabel(p) {
+  const key = (p || '').toLowerCase();
+  if (key === 'domino') return 'Domino';
+  if (key === 'penny') return 'Penny';
+  if (key === 'jimmy') return 'Jimmy';
+  if (key === 'system') return 'System';
+  if (key === 'user') return 'You';
+  return 'Auto';
 }
 
 function appendMessage(role, text, persona, meta) {
+  if (!chatEl) return;
+
   const div = document.createElement('div');
   div.classList.add('msg');
+
+  const personaKey = (persona || '').toLowerCase();
   if (role === 'user') {
     div.classList.add('user');
   } else {
-    div.classList.add(persona);
+    div.classList.add(personaKey || 'domino');
   }
 
-  const content = document.createElement('div');
-  content.textContent = text;
-  div.appendChild(content);
+  const head = document.createElement('div');
+  head.className = 'msg-head';
+  const who = document.createElement('div');
+  who.className = 'msg-who';
+  who.textContent = role === 'user' ? 'You' : personaLabel(personaKey);
+
+  const tag = document.createElement('span');
+  tag.className = 'tag';
+  tag.textContent = role === 'user' ? 'user' : (personaKey || 'assistant');
+  who.appendChild(tag);
+  head.appendChild(who);
+  div.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  body.textContent = text || '';
+  div.appendChild(body);
 
   if (meta && meta.has_audio && meta.tts_provider) {
-    const metaEl = document.createElement('span');
-    metaEl.className = 'meta';
+    const metaEl = document.createElement('div');
+    metaEl.className = 'msg-meta';
     metaEl.textContent = `Audio: ${meta.tts_provider}`;
     div.appendChild(metaEl);
   }
@@ -74,9 +203,27 @@ function appendMessage(role, text, persona, meta) {
 }
 
 function appendSystem(text) {
+  if (!chatEl) return;
   const div = document.createElement('div');
   div.classList.add('msg', 'system');
-  div.textContent = text;
+
+  const head = document.createElement('div');
+  head.className = 'msg-head';
+  const who = document.createElement('div');
+  who.className = 'msg-who';
+  who.textContent = 'System';
+  const tag = document.createElement('span');
+  tag.className = 'tag';
+  tag.textContent = 'system';
+  who.appendChild(tag);
+  head.appendChild(who);
+  div.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  body.textContent = text || '';
+  div.appendChild(body);
+
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
 }
@@ -105,11 +252,11 @@ function loadVoices() {
     };
   }
   if (voices.length) {
-    statusEl.textContent = 'TTS ready';
+    setStatus('Ready', 'ok');
   } else if (synthSupported) {
-    statusEl.textContent = 'Loading voices...';
+    setStatus('Loading voices…', 'warn');
   } else {
-    statusEl.textContent = 'No browser TTS';
+    setStatus('No browser TTS', 'warn');
   }
 }
 
@@ -307,9 +454,7 @@ function speak(text, persona, ttsInfo) {
     }
 
     setServerAudio(ttsInfo.audio_b64, ttsInfo.tts_provider);
-    if (ttsInfo.tts_provider) {
-      statusEl.textContent = `Audio via ${ttsInfo.tts_provider}`;
-    }
+    if (ttsInfo.tts_provider) setStatus(`Audio via ${ttsInfo.tts_provider}`, 'ok');
     playServerAudio();
     return;
   }
@@ -362,12 +507,12 @@ if ('webkitSpeechRecognition' in window) {
   recognizer.onstart = () => {
     recognizing = true;
     micBtn.classList.add('active');
-    statusEl.textContent = 'Listening...';
+    setStatus('Listening…', 'warn');
   };
   recognizer.onend = () => {
     recognizing = false;
     micBtn.classList.remove('active');
-    statusEl.textContent = synthSupported ? 'TTS ready' : '';
+    setStatus('Ready', 'ok');
   };
   recognizer.onresult = (event) => {
     const transcript = event.results[0][0].transcript;
@@ -377,7 +522,7 @@ if ('webkitSpeechRecognition' in window) {
   recognizer.onerror = () => {
     recognizing = false;
     micBtn.classList.remove('active');
-    statusEl.textContent = 'Mic error';
+    setStatus('Mic error', 'warn');
   };
 }
 
@@ -427,17 +572,17 @@ micBtn.addEventListener('click', () => {
             const ext = (blob.type || '').includes('ogg') ? 'ogg' : 'webm';
             fd.append('file', blob, `speech.${ext}`);
 
-            statusEl.textContent = 'Transcribing...';
+            setStatus('Transcribing…', 'warn');
             const resp = await fetch('/api/stt', { method: 'POST', body: fd });
             if (!resp.ok) {
               appendSystem(`STT error: ${resp.status} ${resp.statusText}`);
-              statusEl.textContent = synthSupported ? 'TTS ready' : '';
+              setStatus('Ready', 'ok');
               return;
             }
             const data = await resp.json();
             const transcript = (data && data.text ? String(data.text) : '').trim();
             if (!transcript) {
-              statusEl.textContent = 'No speech detected';
+              setStatus('No speech detected', 'warn');
               return;
             }
             inputEl.value = transcript;
@@ -451,13 +596,13 @@ micBtn.addEventListener('click', () => {
             mediaStream = null;
             mediaRecorder = null;
             recordedChunks = [];
-            statusEl.textContent = synthSupported ? 'TTS ready' : '';
+            setStatus('Ready', 'ok');
           }
         };
 
         whisperRecording = true;
         micBtn.classList.add('active');
-        statusEl.textContent = 'Recording (Whisper)...';
+        setStatus('Recording…', 'warn');
         mediaRecorder.start();
       } catch (e) {
         whisperRecording = false;
@@ -531,6 +676,7 @@ async function sendMessage() {
     const ctype = (resp.headers.get('content-type') || '').toLowerCase();
     if (!resp.ok) {
       appendSystem(`Error: ${resp.status} ${resp.statusText}`);
+      setStatus('Request failed', 'warn');
       return;
     }
 
@@ -544,10 +690,11 @@ async function sendMessage() {
         has_audio: responseHadAudio,
       });
       speak(data.reply, effectivePersona, data);
+      setStatus('Ready', 'ok');
       return;
     }
 
-    statusEl.textContent = 'Waiting for responses...';
+    setStatus('Waiting for responses…', 'warn');
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder('utf-8');
@@ -606,7 +753,7 @@ async function sendMessage() {
           tts_provider: null,
           has_audio: false,
         });
-        statusEl.textContent = `Got ${seenPersonas.size} response(s)...`;
+        setStatus(`Got ${seenPersonas.size} response(s)…`, 'warn');
         return;
       }
 
@@ -615,7 +762,7 @@ async function sendMessage() {
           enqueueServerAudioId(payload.audio_id, payload.tts_provider, payload.mime);
           if (synthSupported) window.speechSynthesis.cancel();
           playNextInQueue();
-          statusEl.textContent = 'Playing audio queue...';
+          setStatus('Playing audio…', 'warn');
         }
         return;
       }
@@ -627,7 +774,7 @@ async function sendMessage() {
       }
 
       if (eventName === 'done') {
-        statusEl.textContent = 'TTS ready';
+        setStatus('Ready', 'ok');
         return;
       }
     }
@@ -655,9 +802,7 @@ async function sendMessage() {
   } finally {
     inputEl.disabled = false;
     sendBtn.disabled = false;
-    if (!statusEl.textContent || statusEl.textContent === 'Waiting for responses...') {
-      statusEl.textContent = 'TTS ready';
-    }
+    refreshSessionLabel();
   }
 }
 
@@ -669,3 +814,202 @@ inputEl.addEventListener('keydown', (e) => {
     sendMessage();
   }
 });
+
+// -------------------------
+// Settings + status
+// -------------------------
+
+function normalizeOptionalText(v) {
+  const s = (v == null ? '' : String(v)).trim();
+  return s ? s : null;
+}
+
+async function fetchJson(url, opts) {
+  const resp = await fetch(url, opts);
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return await resp.json();
+}
+
+function fillPromotedState(state) {
+  const promoted = state || {};
+  if (setTimezone) setTimezone.value = promoted.timezone || '';
+  if (setLocation) setLocation.value = promoted.location || '';
+  if (setUnits) setUnits.value = promoted.preferred_units || '';
+  if (setWorkingRules) setWorkingRules.value = promoted.working_rules || '';
+  if (setTechStack) setTechStack.value = promoted.tech_stack || '';
+  if (setRetrieval) setRetrieval.value = qsBool(!!promoted.retrieval_enabled);
+
+  const baseUrls = promoted.base_urls || {};
+  if (setHa) setHa.value = baseUrls.ha || '';
+  if (setMistral) setMistral.value = baseUrls.mistral || '';
+  if (setFish) setFish.value = baseUrls.fish || '';
+
+  const tts = promoted.tts_overrides || {};
+  if (setTtsDomino) setTtsDomino.value = tts.domino || 'auto';
+  if (setTtsPenny) setTtsPenny.value = tts.penny || 'auto';
+  if (setTtsJimmy) setTtsJimmy.value = tts.jimmy || 'auto';
+}
+
+async function loadPromotedState() {
+  const state = await fetchJson('/api/memory/promoted');
+  fillPromotedState(state);
+  return state;
+}
+
+function collectPromotedPatch() {
+  return {
+    timezone: normalizeOptionalText(setTimezone?.value),
+    location: normalizeOptionalText(setLocation?.value),
+    preferred_units: normalizeOptionalText(setUnits?.value),
+    working_rules: normalizeOptionalText(setWorkingRules?.value),
+    tech_stack: normalizeOptionalText(setTechStack?.value),
+    retrieval_enabled: (setRetrieval?.value || 'false') === 'true',
+    tts_overrides: {
+      domino: (setTtsDomino?.value || 'auto'),
+      penny: (setTtsPenny?.value || 'auto'),
+      jimmy: (setTtsJimmy?.value || 'auto'),
+    },
+    base_urls: {
+      ha: normalizeOptionalText(setHa?.value),
+      mistral: normalizeOptionalText(setMistral?.value),
+      fish: normalizeOptionalText(setFish?.value),
+    },
+  };
+}
+
+async function savePromotedState() {
+  const patch = collectPromotedPatch();
+  const resp = await fetchJson('/api/memory/promoted', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  fillPromotedState(resp);
+  return resp;
+}
+
+function fillHealth(health) {
+  if (!health) return;
+  const ok = health.status === 'ok';
+  setStatus(ok ? 'Ready' : 'Degraded', ok ? 'ok' : 'warn');
+
+  if (kvHub) kvHub.textContent = health.status || 'unknown';
+  if (kvMistral) kvMistral.textContent = health.mistral_base_url || '—';
+  if (kvTts) kvTts.textContent = health.tts_provider || '—';
+  if (kvFish) kvFish.textContent = qsBool(!!health.fish_enabled);
+  if (kvHa) kvHa.textContent = qsBool(!!health.ha_enabled);
+  if (kvGemini) kvGemini.textContent = qsBool(!!health.gemini_enabled);
+
+  if (diagStatus) diagStatus.textContent = health.status || '—';
+  if (diagMistralUrl) diagMistralUrl.textContent = health.mistral_base_url || '—';
+  if (diagHasOpenai) diagHasOpenai.textContent = qsBool(!!health.has_openai);
+  if (diagTtsProvider) diagTtsProvider.textContent = health.tts_provider || '—';
+  if (diagFishEnabled) diagFishEnabled.textContent = qsBool(!!health.fish_enabled);
+  if (diagHaEnabled) diagHaEnabled.textContent = qsBool(!!health.ha_enabled);
+  if (diagGeminiEnabled) diagGeminiEnabled.textContent = qsBool(!!health.gemini_enabled);
+}
+
+async function refreshStatus() {
+  try {
+    const health = await fetchJson('/health');
+    fillHealth(health);
+  } catch (e) {
+    setStatus('Offline', 'warn');
+    if (kvHub) kvHub.textContent = 'offline';
+  }
+
+  try {
+    const sid = getOrCreateSessionId();
+    const time = await fetchJson(`/api/time?session_id=${encodeURIComponent(sid || 'default')}`);
+    if (kvTime) kvTime.textContent = time.display || time.iso || '—';
+  } catch (_) {
+    if (kvTime) kvTime.textContent = '—';
+  }
+}
+
+// -------------------------
+// Navigation + actions
+// -------------------------
+
+function wireNav() {
+  if (navChatBtn) navChatBtn.addEventListener('click', () => setActivePage('chat'));
+  if (navSettingsBtn) navSettingsBtn.addEventListener('click', () => setActivePage('settings'));
+  if (btnJumpSettings) btnJumpSettings.addEventListener('click', () => setActivePage('settings'));
+
+  if (btnRefreshStatus) btnRefreshStatus.addEventListener('click', () => refreshStatus());
+
+  if (btnSettingsReload) {
+    btnSettingsReload.addEventListener('click', async () => {
+      try {
+        setStatus('Reloading…', 'warn');
+        await loadPromotedState();
+        await refreshStatus();
+        setStatus('Ready', 'ok');
+      } catch (e) {
+        appendSystem(`Settings reload failed: ${e}`);
+        setStatus('Reload failed', 'warn');
+      }
+    });
+  }
+
+  if (btnSettingsSave) {
+    btnSettingsSave.addEventListener('click', async () => {
+      try {
+        btnSettingsSave.disabled = true;
+        setStatus('Saving…', 'warn');
+        await savePromotedState();
+        await refreshStatus();
+        appendSystem('Saved promoted-state settings.');
+        setStatus('Ready', 'ok');
+      } catch (e) {
+        appendSystem(`Settings save failed: ${e}`);
+        setStatus('Save failed', 'warn');
+      } finally {
+        btnSettingsSave.disabled = false;
+      }
+    });
+  }
+
+  if (btnNewSession) {
+    btnNewSession.addEventListener('click', () => {
+      const newId = (crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + String(Math.random()).slice(2));
+      setSessionId(newId);
+      refreshSessionLabel();
+      appendSystem('Started a new session.');
+    });
+  }
+
+  if (btnClearHistory) {
+    btnClearHistory.addEventListener('click', async () => {
+      try {
+        const sid = getOrCreateSessionId();
+        await fetchJson(`/api/memory/history/clear?session_id=${encodeURIComponent(sid || 'default')}`, { method: 'POST' });
+        clearChatUI();
+        appendSystem('Cleared chat history for this session.');
+      } catch (e) {
+        appendSystem(`Clear history failed: ${e}`);
+      }
+    });
+  }
+}
+
+// -------------------------
+// Boot
+// -------------------------
+
+wireNav();
+setActivePage('chat');
+refreshSessionLabel();
+
+// Initialize status + settings in the background
+(async () => {
+  try {
+    setStatus('Loading…', 'warn');
+    await refreshStatus();
+    await loadPromotedState();
+    setStatus('Ready', 'ok');
+  } catch (e) {
+    appendSystem(`Init error: ${e}`);
+    setStatus('Init failed', 'warn');
+  }
+})();
