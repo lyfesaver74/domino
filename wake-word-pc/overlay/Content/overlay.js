@@ -1,5 +1,6 @@
 (() => {
   const rootEl = document.getElementById('root');
+  const kittEl = document.getElementById('kitt');
   const subtitleEl = document.getElementById('subtitle');
   const audioUnlockBtn = document.getElementById('audioUnlock');
   const audioErrEl = document.getElementById('audioErr');
@@ -17,6 +18,13 @@
   const subtitleQueue = [];
   let subtitleLoopRunning = false;
   let lastAccent = '#00ffaa';
+
+  const COLS = 7;
+  const SEGS = 18;
+  /** @type {HTMLElement[][]} */
+  const segEls = [];
+  let kittAnimRunning = false;
+  let kittAnimActiveUntil = 0;
 
   function setAudioError(message) {
     if (!audioErrEl) return;
@@ -117,6 +125,96 @@
     }
   }
 
+  function ensureKittBuilt() {
+    if (!kittEl) return;
+    if (segEls.length) return;
+    kittEl.innerHTML = '';
+
+    for (let c = 0; c < COLS; c++) {
+      const col = document.createElement('div');
+      col.className = 'col';
+      col.style.setProperty('--segs', String(SEGS));
+      const segs = [];
+
+      // Top-to-bottom order visually; we flip in activation logic.
+      for (let s = 0; s < SEGS; s++) {
+        const seg = document.createElement('div');
+        seg.className = 'seg';
+        col.appendChild(seg);
+        segs.push(seg);
+      }
+
+      kittEl.appendChild(col);
+      segEls.push(segs);
+    }
+  }
+
+  function clamp01(v) {
+    return Math.max(0, Math.min(1, v));
+  }
+
+  function setKittLevels(levels) {
+    // levels: array length 7, values 0..1
+    for (let c = 0; c < COLS; c++) {
+      const level = clamp01(levels[c] || 0);
+      // Taper columns like KITT (center tallest, edges shorter)
+      const taper = [0.72, 0.84, 0.93, 1.0, 0.93, 0.84, 0.72][c] || 1.0;
+      const nOn = Math.round(SEGS * level * taper);
+      const segs = segEls[c];
+      if (!segs) continue;
+
+      // Segs are stored top->bottom; light from bottom up.
+      for (let i = 0; i < SEGS; i++) {
+        const fromBottom = SEGS - 1 - i;
+        if (fromBottom < nOn) segs[i].classList.add('on');
+        else segs[i].classList.remove('on');
+      }
+    }
+  }
+
+  function pokeKittActive(ms) {
+    const until = Date.now() + (ms || 1200);
+    if (until > kittAnimActiveUntil) kittAnimActiveUntil = until;
+    startKittAnim();
+  }
+
+  function startKittAnim() {
+    if (kittAnimRunning) return;
+    ensureKittBuilt();
+    if (!segEls.length) return;
+
+    kittAnimRunning = true;
+    const start = performance.now();
+
+    const tick = (t) => {
+      const now = Date.now();
+      const active = now < kittAnimActiveUntil;
+      if (!active && !subtitleLoopRunning) {
+        // Clear display and stop.
+        setKittLevels([0,0,0,0,0,0,0]);
+        kittAnimRunning = false;
+        return;
+      }
+
+      // KITT-ish bounce: center leads, outer columns phase-shifted.
+      const dt = (t - start) / 1000;
+      const base = 0.55 + 0.45 * Math.sin(dt * 5.2);
+      const levels = [];
+      for (let c = 0; c < COLS; c++) {
+        const phase = (c - 3) * 0.42;
+        const wobble = 0.5 + 0.5 * Math.sin(dt * 6.4 + phase);
+        const wobble2 = 0.5 + 0.5 * Math.sin(dt * 3.3 + phase * 0.7);
+        const lvl = clamp01(0.15 + 0.85 * (0.55 * wobble + 0.45 * wobble2) * (0.65 + 0.35 * base));
+        levels.push(lvl);
+      }
+      setKittLevels(levels);
+
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  }
+
   function splitIntoSubtitleBlocks(text) {
     const t = String(text || '').replace(/\s+/g, ' ').trim();
     if (!t) return [];
@@ -188,6 +286,7 @@
 
         setAccent(item.color || lastAccent);
         setActive(true);
+        pokeKittActive(2400);
 
         if (subtitleEl) {
           subtitleEl.textContent = item.text || '';
@@ -242,6 +341,7 @@
     socket.onopen = () => {
       // Stay idle until we have content to display.
       setActive(false);
+      ensureKittBuilt();
     };
 
     socket.onclose = () => {
@@ -272,12 +372,14 @@
       if (msg.type === 'assistant_reply') {
         setAccent(msg.color || lastAccent);
         enqueueSubtitles(msg.text || '', msg.color, msg.persona);
+        pokeKittActive(3200);
         return;
       }
 
       if (msg.type === 'tts_audio') {
         setAccent(msg.color || lastAccent);
         playTTSAudio(msg.format, msg.audio_b64);
+        pokeKittActive(3000);
         return;
       }
 

@@ -9,16 +9,21 @@ html, body {
 }
 
 #root {
-  width: 100%;
-  height: 100%;
-  position: relative;
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
   --accent: #00ffaa;
-  --dim: rgba(0, 0, 0, 0.0);
+  --dim: rgba(0, 0, 0, 0.26);
+  --inactive: rgba(255, 255, 255, 0.06);
+  --seg-gap: 4px;
   color: white;
 }
 
 #backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: var(--dim);
   opacity: 0;
@@ -30,94 +35,82 @@ html, body {
   opacity: 1;
 }
 
-#hud {
-  position: absolute;
+
+/* Center stack (3:2 screens look best with slightly higher center) */
+#center {
+  position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
   pointer-events: none;
+  transition: opacity 160ms ease;
+  transform: translateY(-2.5vh);
 }
 
-#root.idle #hud {
+#root.idle #center {
   opacity: 0;
 }
 
-#root.active #hud {
+#root.active #center {
   opacity: 1;
 }
 
-/* Center stack */
-#hud {
-  transition: opacity 160ms ease;
-}
-
+/* KITT voicebox: 7 columns of discrete segments */
 #kitt {
-  width: min(860px, 86vw);
-  height: 52px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  box-sizing: border-box;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  width: min(820px, 78vw);
+  height: min(280px, 26vh);
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: clamp(14px, 2vw, 28px);
+  align-items: end;
+  justify-items: center;
 }
 
-.bar {
-  width: 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 75%, transparent);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
-  opacity: 0.9;
-  transform-origin: bottom center;
-  animation: kittPulse 900ms ease-in-out infinite;
+.col {
+  width: 100%;
+  max-width: 86px;
+  display: grid;
+  grid-template-rows: repeat(var(--segs, 18), 1fr);
+  gap: var(--seg-gap);
+  align-items: stretch;
 }
 
-/* Tapering shape: middle bars tallest, outer bars shorter */
-.b1 { height: 14px; animation-delay: 0ms; }
-.b2 { height: 16px; animation-delay: 40ms; }
-.b3 { height: 18px; animation-delay: 80ms; }
-.b4 { height: 20px; animation-delay: 120ms; }
-.b5 { height: 22px; animation-delay: 160ms; }
-.b6 { height: 26px; animation-delay: 200ms; }
-.b7 { height: 30px; animation-delay: 240ms; }
-.b8 { height: 36px; animation-delay: 280ms; }
-.b9 { height: 40px; animation-delay: 320ms; }
-.b10 { height: 36px; animation-delay: 280ms; }
-.b11 { height: 30px; animation-delay: 240ms; }
-.b12 { height: 26px; animation-delay: 200ms; }
-.b13 { height: 22px; animation-delay: 160ms; }
-.b14 { height: 20px; animation-delay: 120ms; }
-.b15 { height: 18px; animation-delay: 80ms; }
-.b16 { height: 16px; animation-delay: 40ms; }
-.b17 { height: 14px; animation-delay: 0ms; }
+.seg {
+  width: 100%;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+  opacity: 0.55;
+}
 
-@keyframes kittPulse {
-  0%   { transform: scaleY(0.65); opacity: 0.65; filter: blur(0.15px); }
-  45%  { transform: scaleY(1.15); opacity: 1; filter: blur(0px); }
-  100% { transform: scaleY(0.7); opacity: 0.7; filter: blur(0.15px); }
+.seg.on {
+  background: var(--accent);
+  opacity: 0.98;
+  filter:
+    drop-shadow(0 0 10px var(--accent))
+    drop-shadow(0 0 18px var(--accent));
 }
 
 .subtitle {
-  width: min(940px, 92vw);
-  margin-top: 16px;
-  padding: 14px 18px;
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  box-sizing: border-box;
-  color: #fff;
+  width: min(1080px, 92vw);
+  margin-top: 22px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   text-align: center;
-  font-size: clamp(20px, 2.2vw, 34px);
+  font-size: clamp(24px, 2.6vw, 42px);
   line-height: 1.18;
   letter-spacing: 0.2px;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--accent);
+  /* Heavy layered shadows so it reads over dashboards */
+  text-shadow:
+    0 1px 0 rgba(0,0,0,0.70),
+    0 2px 0 rgba(0,0,0,0.68),
+    0 3px 0 rgba(0,0,0,0.66),
+    0 6px 12px rgba(0,0,0,0.62),
+    0 12px 26px rgba(0,0,0,0.55),
+    0 22px 48px rgba(0,0,0,0.42);
 
   opacity: 0;
   transform: translateY(8px);
@@ -146,7 +139,7 @@ html, body {
 
 .audio-controls {
   width: min(940px, 92vw);
-  margin-top: 10px;
+  margin-top: 18px;
   display: flex;
   justify-content: center;
   gap: 10px;
