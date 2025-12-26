@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from typing import Any, Dict, List, Optional, cast
@@ -98,6 +98,121 @@ async def api_stt(file: UploadFile = File(...)) -> STTResponse:
 
     text = (data.get("text") or "").strip()
     return STTResponse(text=text)
+
+
+def _fish_base_url_from_promoted(promoted: Dict[str, Any]) -> str:
+    base_urls = promoted.get("base_urls") or {}
+    fish_url = (base_urls.get("fish") or "").strip() or (os.getenv("FISH_TTS_BASE_URL") or "").strip()
+    return fish_url.rstrip("/")
+
+
+@app.get("/api/fish/references/list")
+async def api_fish_references_list() -> Any:
+    promoted = memory_store.get_promoted_state()
+    fish_base = _fish_base_url_from_promoted(promoted)
+    if not fish_base:
+        raise HTTPException(status_code=500, detail="Fish base URL is not set")
+
+    url = f"{fish_base}/v1/references/list"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(url, headers={"Accept": "application/json"})
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fish references list failed: {e}")
+
+
+@app.post("/api/fish/references/add")
+async def api_fish_references_add(
+    id: str = Form(...),
+    text: str = Form(...),
+    audio: UploadFile = File(...),
+) -> Dict[str, Any]:
+    promoted = memory_store.get_promoted_state()
+    fish_base = _fish_base_url_from_promoted(promoted)
+    if not fish_base:
+        raise HTTPException(status_code=500, detail="Fish base URL is not set")
+
+    voice_id = (id or "").strip()
+    script = (text or "").strip()
+    if not voice_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    if not script:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="audio is empty")
+
+    url = f"{fish_base}/v1/references/add"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                url,
+                data={"id": voice_id, "text": script},
+                files={
+                    "audio": (
+                        audio.filename or "audio.wav",
+                        audio_bytes,
+                        audio.content_type or "application/octet-stream",
+                    )
+                },
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code >= 400:
+                detail = resp.text
+                raise HTTPException(status_code=resp.status_code, detail=detail)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fish references add failed: {e}")
+
+    return {"ok": True, "id": voice_id}
+
+
+@app.delete("/api/fish/references/delete")
+async def api_fish_references_delete(request: Request) -> Dict[str, Any]:
+    promoted = memory_store.get_promoted_state()
+    fish_base = _fish_base_url_from_promoted(promoted)
+    if not fish_base:
+        raise HTTPException(status_code=500, detail="Fish base URL is not set")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ref_id = (body.get("reference_id") if isinstance(body, dict) else None) or ""
+    ref_id = str(ref_id).strip()
+    if not ref_id:
+        raise HTTPException(status_code=400, detail="reference_id is required")
+
+    url = f"{fish_base}/v1/references/delete"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Try JSON first
+            resp = await client.request(
+                "DELETE",
+                url,
+                json={"reference_id": ref_id},
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code >= 400:
+                # Fallback: form-urlencoded
+                resp = await client.request(
+                    "DELETE",
+                    url,
+                    data={"reference_id": ref_id},
+                    headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"},
+                )
+            if resp.status_code >= 400:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fish references delete failed: {e}")
+
+    return {"ok": True, "reference_id": ref_id}
 
 
 # -------------------------

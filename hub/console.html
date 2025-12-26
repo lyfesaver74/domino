@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Domino Hub</title>
-  <link rel="stylesheet" href="/static/console.css?v=20251226" />
+  <link rel="stylesheet" href="/static/console.css?v=20251226c" />
 </head>
 <body>
   <header class="topbar">
@@ -347,6 +347,41 @@
               <div class="hint">
                 Fish test uses the hub audio queue (press Play if your browser blocks autoplay).
               </div>
+
+              <div class="divider"></div>
+
+              <div class="subhead">Voices (references)</div>
+              <div class="hint">
+                These are managed on the Fish service and used via <span class="mono">reference_id</span>.
+              </div>
+
+              <div class="row-actions">
+                <button class="btn btn-ghost" id="fish-voice-refresh" type="button">Refresh voices</button>
+              </div>
+
+              <div id="fish-voice-list" class="list" aria-label="Fish voices"></div>
+
+              <div class="divider"></div>
+
+              <div class="subhead">Add voice</div>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">Voice ID</span>
+                  <input id="fish-voice-id" type="text" placeholder="e.g. steggy_v3" />
+                </label>
+                <label class="field">
+                  <span class="label">Audio (wav recommended)</span>
+                  <input id="fish-voice-audio" type="file" accept="audio/*" />
+                </label>
+                <div class="field">
+                  <span class="label">Upload</span>
+                  <button class="btn btn-ghost" id="fish-voice-add" type="button">Upload voice</button>
+                </div>
+              </div>
+              <label class="field">
+                <span class="label">Transcript / script (required)</span>
+                <textarea id="fish-voice-text" rows="3" placeholder="Exact transcript of the uploaded audio"></textarea>
+              </label>
             </div>
           </div>
         </section>
@@ -377,6 +412,6 @@
     </section>
   </main>
 
-  <script src="/static/console.js?v=20251226" defer></script>
+  <script src="/static/console.js?v=20251226c" defer></script>
 </body>
 </html>

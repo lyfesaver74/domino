@@ -88,6 +88,14 @@ const fishTestPersona = document.getElementById('fish-test-persona');
 const fishTestRef = document.getElementById('fish-test-ref');
 const fishTestBtn = document.getElementById('fish-test-btn');
 
+// Fish voices
+const fishVoiceList = document.getElementById('fish-voice-list');
+const fishVoiceRefreshBtn = document.getElementById('fish-voice-refresh');
+const fishVoiceId = document.getElementById('fish-voice-id');
+const fishVoiceAudio = document.getElementById('fish-voice-audio');
+const fishVoiceText = document.getElementById('fish-voice-text');
+const fishVoiceAddBtn = document.getElementById('fish-voice-add');
+
 function qsBool(v) {
   return v ? 'true' : 'false';
 }
@@ -1028,6 +1036,145 @@ async function testFishTts() {
   }
 }
 
+function renderFishVoiceList(ids) {
+  if (!fishVoiceList) return;
+  fishVoiceList.innerHTML = '';
+
+  const arr = Array.isArray(ids) ? ids : [];
+  if (!arr.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hint';
+    empty.textContent = 'No Fish voices found.';
+    fishVoiceList.appendChild(empty);
+    return;
+  }
+
+  for (const id of arr) {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+
+    const left = document.createElement('div');
+    const title = document.createElement('div');
+    title.textContent = String(id);
+    title.style.fontWeight = '800';
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = 'reference_id';
+    left.appendChild(title);
+    left.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+
+    const useBtn = document.createElement('button');
+    useBtn.className = 'btn btn-ghost';
+    useBtn.type = 'button';
+    useBtn.textContent = 'Use';
+    useBtn.addEventListener('click', () => {
+      if (fishTestRef) fishTestRef.value = String(id);
+      appendSystem(`Fish voice selected: ${id}`);
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-ghost';
+    delBtn.type = 'button';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', async () => {
+      if (!confirm(`Delete Fish voice "${id}"?`)) return;
+      try {
+        delBtn.disabled = true;
+        await fetchJson('/api/fish/references/delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reference_id: String(id) }),
+        });
+        appendSystem(`Deleted Fish voice: ${id}`);
+        await refreshFishVoices();
+      } catch (e) {
+        appendSystem(`Delete failed: ${e}`);
+      } finally {
+        delBtn.disabled = false;
+      }
+    });
+
+    actions.appendChild(useBtn);
+    actions.appendChild(delBtn);
+
+    row.appendChild(left);
+    row.appendChild(actions);
+    fishVoiceList.appendChild(row);
+  }
+}
+
+async function refreshFishVoices() {
+  if (!fishVoiceList) return;
+  try {
+    fishVoiceList.innerHTML = '';
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = 'Loading voices…';
+    fishVoiceList.appendChild(hint);
+
+    const data = await fetchJson('/api/fish/references/list');
+    const ids = Array.isArray(data) ? data : (data.reference_ids || data.references || data.items || []);
+    renderFishVoiceList(ids);
+  } catch (e) {
+    fishVoiceList.innerHTML = '';
+    const err = document.createElement('div');
+    err.className = 'hint';
+    err.textContent = `Failed to load voices: ${e}`;
+    fishVoiceList.appendChild(err);
+  }
+}
+
+async function addFishVoice() {
+  const id = (fishVoiceId?.value || '').trim();
+  const text = (fishVoiceText?.value || '').trim();
+  const file = fishVoiceAudio?.files && fishVoiceAudio.files[0];
+
+  if (!id) {
+    appendSystem('Add Fish voice: missing Voice ID.');
+    return;
+  }
+  if (!file) {
+    appendSystem('Add Fish voice: choose an audio file.');
+    return;
+  }
+  if (!text) {
+    appendSystem('Add Fish voice: transcript/script is required.');
+    return;
+  }
+
+  try {
+    if (fishVoiceAddBtn) fishVoiceAddBtn.disabled = true;
+    setStatus('Uploading voice…', 'warn');
+    const fd = new FormData();
+    fd.append('id', id);
+    fd.append('audio', file, file.name);
+    fd.append('text', text);
+
+    const resp = await fetch('/api/fish/references/add', { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      appendSystem(`Add voice failed: ${resp.status} ${resp.statusText} ${body}`);
+      setStatus('Ready', 'ok');
+      return;
+    }
+
+    appendSystem(`Added Fish voice: ${id}`);
+    if (fishVoiceId) fishVoiceId.value = '';
+    if (fishVoiceAudio) fishVoiceAudio.value = '';
+    if (fishVoiceText) fishVoiceText.value = '';
+    await refreshFishVoices();
+    setStatus('Ready', 'ok');
+  } catch (e) {
+    appendSystem(`Add voice failed: ${e}`);
+    setStatus('Ready', 'ok');
+  } finally {
+    if (fishVoiceAddBtn) fishVoiceAddBtn.disabled = false;
+  }
+}
+
 async function refreshStatus() {
   try {
     const health = await fetchJson('/health');
@@ -1118,6 +1265,14 @@ function wireNav() {
   if (fishTestBtn) {
     fishTestBtn.addEventListener('click', () => testFishTts());
   }
+
+  if (fishVoiceRefreshBtn) {
+    fishVoiceRefreshBtn.addEventListener('click', () => refreshFishVoices());
+  }
+
+  if (fishVoiceAddBtn) {
+    fishVoiceAddBtn.addEventListener('click', () => addFishVoice());
+  }
 }
 
 // -------------------------
@@ -1134,6 +1289,7 @@ refreshSessionLabel();
     setStatus('Loading…', 'warn');
     await refreshStatus();
     await loadPromotedState();
+    await refreshFishVoices();
     setStatus('Ready', 'ok');
   } catch (e) {
     appendSystem(`Init error: ${e}`);
