@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Domino Hub</title>
-  <link rel="stylesheet" href="/static/console.css?v=20251225" />
+  <link rel="stylesheet" href="/static/console.css?v=20251226" />
 </head>
 <body>
   <header class="topbar">
@@ -176,7 +176,7 @@
 
             <div class="form-section">
               <div class="form-title">Services</div>
-              <div class="grid3">
+              <div class="grid2">
                 <label class="field">
                   <span class="label">Home Assistant base URL</span>
                   <input id="set-ha" type="url" placeholder="http://homeassistant.local:8123" />
@@ -184,10 +184,6 @@
                 <label class="field">
                   <span class="label">Mistral base URL</span>
                   <input id="set-mistral" type="url" placeholder="http://host.docker.internal:1234/v1" />
-                </label>
-                <label class="field">
-                  <span class="label">Fish TTS base URL</span>
-                  <input id="set-fish" type="url" placeholder="http://fish-speech-server:8080" />
                 </label>
               </div>
 
@@ -231,6 +227,127 @@
                 </label>
               </div>
             </div>
+
+            <div class="form-section">
+              <div class="form-title">Whisper (STT)</div>
+              <div class="grid2">
+                <label class="field">
+                  <span class="label">Whisper base URL</span>
+                  <input id="set-whisper" type="url" placeholder="http://whisper-service:9000" />
+                </label>
+                <label class="field">
+                  <span class="label">Whisper timeout (seconds)</span>
+                  <input id="set-whisper-timeout" type="number" min="1" step="1" placeholder="60" />
+                </label>
+              </div>
+              <div class="grid2">
+                <label class="field">
+                  <span class="label">Test file (audio)</span>
+                  <input id="whisper-test-file" type="file" accept="audio/*" />
+                </label>
+                <div class="field">
+                  <span class="label">Test</span>
+                  <button class="btn btn-ghost" id="whisper-test-btn" type="button">Transcribe</button>
+                </div>
+              </div>
+              <label class="field">
+                <span class="label">Test result (text)</span>
+                <textarea id="whisper-test-out" rows="3" placeholder="Transcription will appear here" readonly></textarea>
+              </label>
+            </div>
+
+            <div class="form-section">
+              <div class="form-title">Fish (TTS)</div>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">Fish TTS base URL</span>
+                  <input id="set-fish" type="url" placeholder="http://fish-speech-server:8080" />
+                </label>
+                <label class="field">
+                  <span class="label">Fish timeout (seconds)</span>
+                  <input id="set-fish-timeout" type="number" min="1" step="1" placeholder="120" />
+                </label>
+                <label class="field">
+                  <span class="label">Format</span>
+                  <select id="set-fish-format">
+                    <option value="wav">wav</option>
+                    <option value="mp3">mp3</option>
+                    <option value="flac">flac</option>
+                  </select>
+                </label>
+              </div>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">Normalize</span>
+                  <select id="set-fish-normalize">
+                    <option value="true">on</option>
+                    <option value="false">off</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Chunk length</span>
+                  <input id="set-fish-chunk" type="number" min="20" step="10" placeholder="200" />
+                </label>
+                <label class="field">
+                  <span class="label">Max new tokens</span>
+                  <input id="set-fish-max-new-tokens" type="number" min="64" step="64" placeholder="1024" />
+                </label>
+              </div>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">Temperature</span>
+                  <input id="set-fish-temperature" type="number" min="0" step="0.1" placeholder="0.8" />
+                </label>
+                <label class="field">
+                  <span class="label">Top P</span>
+                  <input id="set-fish-top-p" type="number" min="0" max="1" step="0.05" placeholder="0.8" />
+                </label>
+                <label class="field">
+                  <span class="label">Repetition penalty</span>
+                  <input id="set-fish-repetition-penalty" type="number" min="0.5" step="0.1" placeholder="1.1" />
+                </label>
+              </div>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">Reference ID · Domino</span>
+                  <input id="set-fish-ref-domino" type="text" placeholder="(optional)" />
+                </label>
+                <label class="field">
+                  <span class="label">Reference ID · Penny</span>
+                  <input id="set-fish-ref-penny" type="text" placeholder="(optional)" />
+                </label>
+                <label class="field">
+                  <span class="label">Reference ID · Jimmy</span>
+                  <input id="set-fish-ref-jimmy" type="text" placeholder="(optional)" />
+                </label>
+              </div>
+
+              <label class="field">
+                <span class="label">Test text</span>
+                <textarea id="fish-test-text" rows="2" placeholder="Type a short sentence to synthesize with Fish"></textarea>
+              </label>
+              <div class="grid3">
+                <label class="field">
+                  <span class="label">Test persona</span>
+                  <select id="fish-test-persona">
+                    <option value="domino" selected>domino</option>
+                    <option value="penny">penny</option>
+                    <option value="jimmy">jimmy</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="label">Override reference ID (optional)</span>
+                  <input id="fish-test-ref" type="text" placeholder="(leave blank to use persona reference)" />
+                </label>
+                <div class="field">
+                  <span class="label">Test</span>
+                  <button class="btn btn-ghost" id="fish-test-btn" type="button">Synthesize</button>
+                </div>
+              </div>
+              <div class="hint">
+                Fish test uses the hub audio queue (press Play if your browser blocks autoplay).
+              </div>
+            </div>
           </div>
         </section>
 
@@ -244,6 +361,8 @@
           <div class="kv" role="list">
             <div class="kv-row" role="listitem"><div class="k">status</div><div class="v" id="diag-status">—</div></div>
             <div class="kv-row" role="listitem"><div class="k">mistral_base_url</div><div class="v" id="diag-mistral-url">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">whisper_base_url</div><div class="v" id="diag-whisper-url">—</div></div>
+            <div class="kv-row" role="listitem"><div class="k">fish_base_url</div><div class="v" id="diag-fish-url">—</div></div>
             <div class="kv-row" role="listitem"><div class="k">has_openai</div><div class="v" id="diag-has-openai">—</div></div>
             <div class="kv-row" role="listitem"><div class="k">tts_provider</div><div class="v" id="diag-tts-provider">—</div></div>
             <div class="kv-row" role="listitem"><div class="k">fish_enabled</div><div class="v" id="diag-fish-enabled">—</div></div>
@@ -258,6 +377,6 @@
     </section>
   </main>
 
-  <script src="/static/console.js?v=20251225" defer></script>
+  <script src="/static/console.js?v=20251226" defer></script>
 </body>
 </html>

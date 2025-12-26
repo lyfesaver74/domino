@@ -29,6 +29,10 @@ async def tts_with_fish(
     text: str,
     reference_id: Optional[str] = None,
     *,
+    base_url: Optional[str] = None,
+    timeout_sec: Optional[float] = None,
+    audio_format: Optional[str] = None,
+    normalize: Optional[bool] = None,
     chunk_length: int = 200,
     temperature: float = 0.8,
     top_p: float = 0.8,
@@ -42,17 +46,21 @@ async def tts_with_fish(
     if not text:
         return None, None
 
-    url = f"{FISH_TTS_BASE_URL}/v1/tts"
+    base = (base_url or FISH_TTS_BASE_URL).rstrip("/")
+    url = f"{base}/v1/tts"
+
+    fmt = (audio_format or FISH_TTS_FORMAT).lower()
+    norm = FISH_TTS_NORMALIZE if normalize is None else bool(normalize)
 
     payload: Dict[str, Any] = {
         "text": text,
         "chunk_length": chunk_length,
-        "format": FISH_TTS_FORMAT,
+        "format": fmt,
         "references": [],
         "reference_id": reference_id,
         "seed": None,
         "use_memory_cache": "off",
-        "normalize": FISH_TTS_NORMALIZE,
+        "normalize": norm,
         "streaming": False,
         "max_new_tokens": max_new_tokens,
         "top_p": top_p,
@@ -60,7 +68,8 @@ async def tts_with_fish(
         "temperature": temperature,
     }
 
-    timeout = httpx.Timeout(timeout=FISH_TTS_TIMEOUT, connect=10.0)
+    total_timeout = FISH_TTS_TIMEOUT if timeout_sec is None else float(timeout_sec)
+    timeout = httpx.Timeout(timeout=total_timeout, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, json=payload)
         resp.raise_for_status()

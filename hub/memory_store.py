@@ -36,6 +36,29 @@ DEFAULT_PROMOTED_STATE: Dict[str, Any] = {
         "ha": os.getenv("HA_BASE_URL") or None,
         "mistral": os.getenv("MISTRAL_BASE_URL") or None,
         "fish": os.getenv("FISH_TTS_BASE_URL") or None,
+        "whisper": os.getenv("WHISPER_URL") or None,
+    },
+
+    # Fish tuning (optional overrides; runtime env still applies if unset)
+    "fish_tts": {
+        "timeout_sec": float(os.getenv("FISH_TTS_TIMEOUT", "120")),
+        "format": os.getenv("FISH_TTS_FORMAT", "wav").lower(),
+        "normalize": (os.getenv("FISH_TTS_NORMALIZE", "true").strip().lower() in ("1", "true", "yes", "on")),
+        "chunk_length": 200,
+        "temperature": 0.8,
+        "top_p": 0.8,
+        "repetition_penalty": 1.1,
+        "max_new_tokens": 1024,
+        "refs": {
+            "domino": os.getenv("FISH_REF_DOMINO") or None,
+            "penny": os.getenv("FISH_REF_PENNY") or None,
+            "jimmy": os.getenv("FISH_REF_JIMMY") or None,
+        },
+    },
+
+    # Whisper tuning (hub-side only)
+    "whisper_stt": {
+        "timeout_sec": float(os.getenv("WHISPER_TIMEOUT", "60")),
     },
     # Retrieval memory off by default to avoid “creepy/wrong” behavior
     "retrieval_enabled": False,
@@ -235,7 +258,7 @@ class MemoryStore:
 
         # Shallow merge for most keys; deep merge for known nested dicts.
         for k, v in (patch or {}).items():
-            if k in ("tts_overrides", "base_urls") and isinstance(state.get(k), dict) and isinstance(v, dict):
+            if k in ("tts_overrides", "base_urls", "fish_tts", "whisper_stt") and isinstance(state.get(k), dict) and isinstance(v, dict):
                 merged = dict(state.get(k) or {})
                 merged.update(v)
                 state[k] = merged

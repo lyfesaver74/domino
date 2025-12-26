@@ -33,6 +33,7 @@ from schemas import (
     AskResponse,
     STTResponse,
     PromotedStatePatch,
+    TTSTestRequest,
     RetrievalUpsertRequest,
     RetrievalQueryRequest,
 )
@@ -72,15 +73,22 @@ app = FastAPI(
 
 @app.post("/api/stt", response_model=STTResponse)
 async def api_stt(file: UploadFile = File(...)) -> STTResponse:
-    if not WHISPER_URL:
+    promoted = memory_store.get_promoted_state()
+    base_urls = promoted.get("base_urls") or {}
+    whisper_url = (base_urls.get("whisper") or "").strip() or WHISPER_URL
+    whisper_cfg = promoted.get("whisper_stt") or {}
+    whisper_timeout = whisper_cfg.get("timeout_sec")
+    whisper_timeout = WHISPER_TIMEOUT if whisper_timeout is None else float(whisper_timeout)
+
+    if not whisper_url:
         raise HTTPException(status_code=500, detail="WHISPER_URL is not set")
 
     audio_bytes = await file.read()
 
     try:
-        async with httpx.AsyncClient(timeout=WHISPER_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=whisper_timeout) as client:
             resp = await client.post(
-                f"{WHISPER_URL}/transcribe",
+                f"{whisper_url.rstrip('/')}/transcribe",
                 files={"file": (file.filename or "audio", audio_bytes, file.content_type or "application/octet-stream")},
             )
             resp.raise_for_status()
@@ -684,10 +692,15 @@ async def generate_tts(persona: str, text: str, tts_pref: str = "auto") -> tuple
 
     persona_key = (persona or "").lower()
 
+    promoted = memory_store.get_promoted_state()
+    base_urls = promoted.get("base_urls") or {}
+    fish_cfg = promoted.get("fish_tts") or {}
+    fish_refs = (fish_cfg.get("refs") or {}) if isinstance(fish_cfg, dict) else {}
+
     fish_ref_map = {
-        "domino": FISH_REF_DOMINO,
-        "penny": FISH_REF_PENNY,
-        "jimmy": FISH_REF_JIMMY,
+        "domino": fish_refs.get("domino") or FISH_REF_DOMINO,
+        "penny": fish_refs.get("penny") or FISH_REF_PENNY,
+        "jimmy": fish_refs.get("jimmy") or FISH_REF_JIMMY,
     }
 
     tts_pref = (tts_pref or "auto").lower().strip()
@@ -699,9 +712,24 @@ async def generate_tts(persona: str, text: str, tts_pref: str = "auto") -> tuple
     # ---- 1) Fish first (all personas) ----
     if FISH_TTS_ENABLED and tts_pref in ("auto", "fish"):
         try:
+            fish_base_url = (base_urls.get("fish") or "").strip() or None
+            fish_kwargs: Dict[str, Any] = {}
+            if isinstance(fish_cfg, dict):
+                for key in ("chunk_length", "temperature", "top_p", "repetition_penalty", "max_new_tokens"):
+                    if fish_cfg.get(key) is not None:
+                        fish_kwargs[key] = fish_cfg.get(key)
+                if fish_cfg.get("timeout_sec") is not None:
+                    fish_kwargs["timeout_sec"] = fish_cfg.get("timeout_sec")
+                if fish_cfg.get("format"):
+                    fish_kwargs["audio_format"] = fish_cfg.get("format")
+                if fish_cfg.get("normalize") is not None:
+                    fish_kwargs["normalize"] = fish_cfg.get("normalize")
+
             audio_b64, provider_name = await tts_with_fish(
                 text,
                 reference_id=fish_ref_map.get(persona_key),
+                base_url=fish_base_url,
+                **fish_kwargs,
             )
         except Exception as e:  # noqa: BLE001
             print(f"[DominoHub] Fish TTS error: {e}")
@@ -745,6 +773,71 @@ async def generate_tts(persona: str, text: str, tts_pref: str = "auto") -> tuple
         return audio_b64, "elevenlabs"
 
     return None, None
+
+
+@app.post("/api/tts/test")
+async def api_tts_test(req: TTSTestRequest) -> Dict[str, Any]:
+    provider = (req.provider or "fish").lower().strip()
+    if provider != "fish":
+        raise HTTPException(status_code=400, detail="Only provider='fish' is supported for /api/tts/test")
+
+    persona = (req.persona or "domino").lower().strip()
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    promoted = memory_store.get_promoted_state()
+    base_urls = promoted.get("base_urls") or {}
+    fish_cfg = promoted.get("fish_tts") or {}
+    fish_refs = (fish_cfg.get("refs") or {}) if isinstance(fish_cfg, dict) else {}
+
+    reference_id = req.reference_id
+    if not reference_id:
+        reference_id = fish_refs.get(persona)
+    if not reference_id:
+        if persona == "domino":
+            reference_id = FISH_REF_DOMINO
+        elif persona == "penny":
+            reference_id = FISH_REF_PENNY
+        elif persona == "jimmy":
+            reference_id = FISH_REF_JIMMY
+
+    fish_base_url = (base_urls.get("fish") or "").strip() or None
+    fish_kwargs: Dict[str, Any] = {}
+    if isinstance(fish_cfg, dict):
+        for key in ("chunk_length", "temperature", "top_p", "repetition_penalty", "max_new_tokens"):
+            if fish_cfg.get(key) is not None:
+                fish_kwargs[key] = fish_cfg.get(key)
+        if fish_cfg.get("timeout_sec") is not None:
+            fish_kwargs["timeout_sec"] = fish_cfg.get("timeout_sec")
+        if fish_cfg.get("format"):
+            fish_kwargs["audio_format"] = fish_cfg.get("format")
+        if fish_cfg.get("normalize") is not None:
+            fish_kwargs["normalize"] = fish_cfg.get("normalize")
+
+    try:
+        audio_b64, provider_name = await tts_with_fish(
+            text,
+            reference_id=reference_id,
+            base_url=fish_base_url,
+            **fish_kwargs,
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fish TTS failed: {e}")
+
+    if not audio_b64:
+        raise HTTPException(status_code=502, detail="Fish TTS returned no audio")
+
+    stored = await _audio_store_put(audio_b64, provider_name or "fish")
+    if not stored:
+        raise HTTPException(status_code=500, detail="Failed to store audio")
+
+    return {
+        "ok": True,
+        "tts_provider": provider_name or "fish",
+        "audio_id": stored["audio_id"],
+        "mime": stored["mime"],
+    }
 
 
 @app.get("/api/memory/promoted")
@@ -1067,12 +1160,20 @@ async def health() -> Dict[str, Any]:
     base_urls = promoted.get("base_urls") or {}
     mistral_url_promoted = (base_urls.get("mistral") or "").strip() or None
     mistral_url_effective = mistral_url_promoted or MISTRAL_BASE_URL
+
+    whisper_url_promoted = (base_urls.get("whisper") or "").strip() or None
+    whisper_url_effective = whisper_url_promoted or (WHISPER_URL or None)
+
+    fish_url_promoted = (base_urls.get("fish") or "").strip() or None
+    fish_url_effective = fish_url_promoted or (os.getenv("FISH_TTS_BASE_URL") or None)
     return {
         "status": "ok",
         # Effective URL used for Domino (may be overridden by promoted-state)
         "mistral_base_url": mistral_url_effective,
         "mistral_base_url_env": MISTRAL_BASE_URL,
         "mistral_base_url_promoted": mistral_url_promoted,
+        "whisper_base_url": whisper_url_effective,
+        "fish_base_url": fish_url_effective,
         "has_openai": bool(openai_client),
         "gemini_enabled": gemini_enabled,
         "ha_enabled": ha_enabled,

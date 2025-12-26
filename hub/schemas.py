@@ -37,6 +37,29 @@ class STTResponse(BaseModel):
     text: str
 
 
+class FishTtsSettings(BaseModel):
+    timeout_sec: Optional[float] = None
+    format: Optional[str] = None
+    normalize: Optional[bool] = None
+    chunk_length: Optional[int] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
+    max_new_tokens: Optional[int] = None
+    refs: Optional[Dict[str, Optional[str]]] = None
+
+
+class WhisperSttSettings(BaseModel):
+    timeout_sec: Optional[float] = None
+
+
+class TTSTestRequest(BaseModel):
+    persona: str = "domino"
+    text: str
+    provider: str = "fish"
+    reference_id: Optional[str] = None
+
+
 class PromotedStatePatch(BaseModel):
     timezone: Optional[str] = None
     location: Optional[str] = None
@@ -46,6 +69,8 @@ class PromotedStatePatch(BaseModel):
     tts_overrides: Optional[Dict[str, str]] = None
     base_urls: Optional[Dict[str, Optional[str]]] = None
     retrieval_enabled: Optional[bool] = None
+    fish_tts: Optional[FishTtsSettings] = None
+    whisper_stt: Optional[WhisperSttSettings] = None
 
 
 class RetrievalUpsertRequest(BaseModel):

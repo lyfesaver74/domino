@@ -48,6 +48,21 @@ const setTechStack = document.getElementById('set-tech-stack');
 const setHa = document.getElementById('set-ha');
 const setMistral = document.getElementById('set-mistral');
 const setFish = document.getElementById('set-fish');
+const setWhisper = document.getElementById('set-whisper');
+const setWhisperTimeout = document.getElementById('set-whisper-timeout');
+
+// Fish advanced
+const setFishTimeout = document.getElementById('set-fish-timeout');
+const setFishFormat = document.getElementById('set-fish-format');
+const setFishNormalize = document.getElementById('set-fish-normalize');
+const setFishChunk = document.getElementById('set-fish-chunk');
+const setFishMaxNewTokens = document.getElementById('set-fish-max-new-tokens');
+const setFishTemperature = document.getElementById('set-fish-temperature');
+const setFishTopP = document.getElementById('set-fish-top-p');
+const setFishRepetitionPenalty = document.getElementById('set-fish-repetition-penalty');
+const setFishRefDomino = document.getElementById('set-fish-ref-domino');
+const setFishRefPenny = document.getElementById('set-fish-ref-penny');
+const setFishRefJimmy = document.getElementById('set-fish-ref-jimmy');
 const setTtsDomino = document.getElementById('set-tts-domino');
 const setTtsPenny = document.getElementById('set-tts-penny');
 const setTtsJimmy = document.getElementById('set-tts-jimmy');
@@ -55,11 +70,23 @@ const setTtsJimmy = document.getElementById('set-tts-jimmy');
 // Diagnostics (read-only)
 const diagStatus = document.getElementById('diag-status');
 const diagMistralUrl = document.getElementById('diag-mistral-url');
+const diagWhisperUrl = document.getElementById('diag-whisper-url');
+const diagFishUrl = document.getElementById('diag-fish-url');
 const diagHasOpenai = document.getElementById('diag-has-openai');
 const diagTtsProvider = document.getElementById('diag-tts-provider');
 const diagFishEnabled = document.getElementById('diag-fish-enabled');
 const diagHaEnabled = document.getElementById('diag-ha-enabled');
 const diagGeminiEnabled = document.getElementById('diag-gemini-enabled');
+
+// Tests
+const whisperTestFile = document.getElementById('whisper-test-file');
+const whisperTestBtn = document.getElementById('whisper-test-btn');
+const whisperTestOut = document.getElementById('whisper-test-out');
+
+const fishTestText = document.getElementById('fish-test-text');
+const fishTestPersona = document.getElementById('fish-test-persona');
+const fishTestRef = document.getElementById('fish-test-ref');
+const fishTestBtn = document.getElementById('fish-test-btn');
 
 function qsBool(v) {
   return v ? 'true' : 'false';
@@ -178,11 +205,6 @@ function appendMessage(role, text, persona, meta) {
   const who = document.createElement('div');
   who.className = 'msg-who';
   who.textContent = role === 'user' ? 'You' : personaLabel(personaKey);
-
-  const tag = document.createElement('span');
-  tag.className = 'tag';
-  tag.textContent = role === 'user' ? 'user' : (personaKey || 'assistant');
-  who.appendChild(tag);
   head.appendChild(who);
   div.appendChild(head);
 
@@ -212,10 +234,6 @@ function appendSystem(text) {
   const who = document.createElement('div');
   who.className = 'msg-who';
   who.textContent = 'System';
-  const tag = document.createElement('span');
-  tag.className = 'tag';
-  tag.textContent = 'system';
-  who.appendChild(tag);
   head.appendChild(who);
   div.appendChild(head);
 
@@ -843,6 +861,25 @@ function fillPromotedState(state) {
   if (setHa) setHa.value = baseUrls.ha || '';
   if (setMistral) setMistral.value = baseUrls.mistral || '';
   if (setFish) setFish.value = baseUrls.fish || '';
+  if (setWhisper) setWhisper.value = baseUrls.whisper || '';
+
+  const whisper = promoted.whisper_stt || {};
+  if (setWhisperTimeout) setWhisperTimeout.value = whisper.timeout_sec != null ? String(whisper.timeout_sec) : '';
+
+  const fish = promoted.fish_tts || {};
+  if (setFishTimeout) setFishTimeout.value = fish.timeout_sec != null ? String(fish.timeout_sec) : '';
+  if (setFishFormat) setFishFormat.value = fish.format || 'wav';
+  if (setFishNormalize) setFishNormalize.value = qsBool(fish.normalize !== false);
+  if (setFishChunk) setFishChunk.value = fish.chunk_length != null ? String(fish.chunk_length) : '';
+  if (setFishMaxNewTokens) setFishMaxNewTokens.value = fish.max_new_tokens != null ? String(fish.max_new_tokens) : '';
+  if (setFishTemperature) setFishTemperature.value = fish.temperature != null ? String(fish.temperature) : '';
+  if (setFishTopP) setFishTopP.value = fish.top_p != null ? String(fish.top_p) : '';
+  if (setFishRepetitionPenalty) setFishRepetitionPenalty.value = fish.repetition_penalty != null ? String(fish.repetition_penalty) : '';
+
+  const refs = fish.refs || {};
+  if (setFishRefDomino) setFishRefDomino.value = refs.domino || '';
+  if (setFishRefPenny) setFishRefPenny.value = refs.penny || '';
+  if (setFishRefJimmy) setFishRefJimmy.value = refs.jimmy || '';
 
   const tts = promoted.tts_overrides || {};
   if (setTtsDomino) setTtsDomino.value = tts.domino || 'auto';
@@ -857,6 +894,13 @@ async function loadPromotedState() {
 }
 
 function collectPromotedPatch() {
+  const fishNormalizeVal = (setFishNormalize?.value || 'true') === 'true';
+  const fishRefs = {
+    domino: normalizeOptionalText(setFishRefDomino?.value),
+    penny: normalizeOptionalText(setFishRefPenny?.value),
+    jimmy: normalizeOptionalText(setFishRefJimmy?.value),
+  };
+
   return {
     timezone: normalizeOptionalText(setTimezone?.value),
     location: normalizeOptionalText(setLocation?.value),
@@ -873,6 +917,23 @@ function collectPromotedPatch() {
       ha: normalizeOptionalText(setHa?.value),
       mistral: normalizeOptionalText(setMistral?.value),
       fish: normalizeOptionalText(setFish?.value),
+      whisper: normalizeOptionalText(setWhisper?.value),
+    },
+
+    whisper_stt: {
+      timeout_sec: normalizeOptionalText(setWhisperTimeout?.value) ? Number(setWhisperTimeout.value) : null,
+    },
+
+    fish_tts: {
+      timeout_sec: normalizeOptionalText(setFishTimeout?.value) ? Number(setFishTimeout.value) : null,
+      format: normalizeOptionalText(setFishFormat?.value),
+      normalize: fishNormalizeVal,
+      chunk_length: normalizeOptionalText(setFishChunk?.value) ? Number(setFishChunk.value) : null,
+      max_new_tokens: normalizeOptionalText(setFishMaxNewTokens?.value) ? Number(setFishMaxNewTokens.value) : null,
+      temperature: normalizeOptionalText(setFishTemperature?.value) ? Number(setFishTemperature.value) : null,
+      top_p: normalizeOptionalText(setFishTopP?.value) ? Number(setFishTopP.value) : null,
+      repetition_penalty: normalizeOptionalText(setFishRepetitionPenalty?.value) ? Number(setFishRepetitionPenalty.value) : null,
+      refs: fishRefs,
     },
   };
 }
@@ -902,11 +963,69 @@ function fillHealth(health) {
 
   if (diagStatus) diagStatus.textContent = health.status || '—';
   if (diagMistralUrl) diagMistralUrl.textContent = health.mistral_base_url || '—';
+  if (diagWhisperUrl) diagWhisperUrl.textContent = health.whisper_base_url || '—';
+  if (diagFishUrl) diagFishUrl.textContent = health.fish_base_url || '—';
   if (diagHasOpenai) diagHasOpenai.textContent = qsBool(!!health.has_openai);
   if (diagTtsProvider) diagTtsProvider.textContent = health.tts_provider || '—';
   if (diagFishEnabled) diagFishEnabled.textContent = qsBool(!!health.fish_enabled);
   if (diagHaEnabled) diagHaEnabled.textContent = qsBool(!!health.ha_enabled);
   if (diagGeminiEnabled) diagGeminiEnabled.textContent = qsBool(!!health.gemini_enabled);
+}
+
+async function testWhisperStt() {
+  if (!whisperTestFile || !whisperTestOut) return;
+  const f = whisperTestFile.files && whisperTestFile.files[0];
+  if (!f) {
+    whisperTestOut.value = 'Choose an audio file first.';
+    return;
+  }
+  whisperTestOut.value = 'Transcribing…';
+  try {
+    const fd = new FormData();
+    fd.append('file', f, f.name);
+    const resp = await fetch('/api/stt', { method: 'POST', body: fd });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      whisperTestOut.value = data.detail ? String(data.detail) : `${resp.status} ${resp.statusText}`;
+      return;
+    }
+    whisperTestOut.value = (data.text || '').trim() || '(no text returned)';
+  } catch (e) {
+    whisperTestOut.value = String(e);
+  }
+}
+
+async function testFishTts() {
+  if (!fishTestBtn || !fishTestText) return;
+  const text = (fishTestText.value || '').trim();
+  if (!text) {
+    appendSystem('Fish test: enter some text first.');
+    return;
+  }
+  const persona = (fishTestPersona?.value || 'domino').toLowerCase();
+  const refOverride = normalizeOptionalText(fishTestRef?.value);
+  try {
+    fishTestBtn.disabled = true;
+    setStatus('Fish TTS…', 'warn');
+    const data = await fetchJson('/api/tts/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ persona, text, provider: 'fish', reference_id: refOverride }),
+    });
+    if (data && data.audio_id) {
+      enqueueServerAudioId(data.audio_id, data.tts_provider || 'fish', data.mime);
+      playNextInQueue();
+      setStatus('Playing audio…', 'warn');
+    } else {
+      appendSystem('Fish test: no audio returned.');
+      setStatus('Ready', 'ok');
+    }
+  } catch (e) {
+    appendSystem(`Fish test failed: ${e}`);
+    setStatus('Ready', 'ok');
+  } finally {
+    fishTestBtn.disabled = false;
+  }
 }
 
 async function refreshStatus() {
@@ -990,6 +1109,14 @@ function wireNav() {
         appendSystem(`Clear history failed: ${e}`);
       }
     });
+  }
+
+  if (whisperTestBtn) {
+    whisperTestBtn.addEventListener('click', () => testWhisperStt());
+  }
+
+  if (fishTestBtn) {
+    fishTestBtn.addEventListener('click', () => testFishTts());
   }
 }
 
