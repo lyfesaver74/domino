@@ -23,6 +23,47 @@ import google.generativeai as genai
 from threading import Lock
 
 
+class _BroadcastBus:
+    def __init__(self) -> None:
+        self._subscribers: List[asyncio.Queue[Dict[str, Any]]] = []
+        self._lock = asyncio.Lock()
+
+    async def subscribe(self) -> asyncio.Queue[Dict[str, Any]]:
+        q: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(maxsize=200)
+        async with self._lock:
+            self._subscribers.append(q)
+        return q
+
+    async def unsubscribe(self, q: asyncio.Queue[Dict[str, Any]]) -> None:
+        async with self._lock:
+            try:
+                self._subscribers.remove(q)
+            except ValueError:
+                pass
+
+    async def publish(self, payload: Dict[str, Any]) -> None:
+        async with self._lock:
+            subs = list(self._subscribers)
+        if not subs:
+            return
+        for q in subs:
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                # Drop the oldest item to keep the stream alive for slow clients.
+                try:
+                    _ = q.get_nowait()
+                except Exception:
+                    pass
+                try:
+                    q.put_nowait(payload)
+                except Exception:
+                    pass
+
+
+_broadcast_bus = _BroadcastBus()
+
+
 logger = logging.getLogger("domino_hub")
 
 from personas import PERSONAS
@@ -1377,7 +1418,7 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
             )
 
         results = await asyncio.gather(*[one(p) for p in targets])
-        return AskResponse(
+        res = AskResponse(
             persona="collective",
             reply="",
             actions=[],
@@ -1385,6 +1426,26 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
             tts_provider=None,
             responses=results,
         )
+
+        # Broadcast collective replies to any open chat windows.
+        try:
+            for r in results:
+                await _broadcast_bus.publish(
+                    {
+                        "kind": "assistant_reply",
+                        "source": "ask",
+                        "session_id": session_id,
+                        "persona": r.persona,
+                        "reply": r.reply,
+                        "has_audio": bool(r.audio_b64),
+                        "tts_provider": r.tts_provider,
+                        "ts": time.time(),
+                    }
+                )
+        except Exception:
+            pass
+
+        return res
 
     # 2) Normal single-persona path
     # Fast path: clock questions (no LLM)
@@ -1417,7 +1478,7 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
     )
 
     # 5) Return clean text + actions + audio metadata
-    return AskResponse(
+    res = AskResponse(
         persona=effective_persona,
         reply=cleaned_reply,
         actions=actions,
@@ -1425,9 +1486,53 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
         tts_provider=provider,
     )
 
+    # Broadcast /api/ask replies (used by the PC wake-word voice flow)
+    try:
+        await _broadcast_bus.publish(
+            {
+                "kind": "assistant_reply",
+                "source": "ask",
+                "session_id": session_id,
+                "persona": effective_persona,
+                "reply": cleaned_reply,
+                "has_audio": bool(audio_b64),
+                "tts_provider": provider,
+                "ts": time.time(),
+            }
+        )
+    except Exception:
+        pass
+
+    return res
+
 
 def _sse(event: str, data_obj: Dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data_obj, ensure_ascii=False)}\n\n"
+
+
+@app.get("/api/broadcast/stream")
+async def api_broadcast_stream():
+    q = await _broadcast_bus.subscribe()
+
+    async def _gen():
+        try:
+            # Initial comment helps some clients establish the stream promptly.
+            yield ":ok\n\n"
+            while True:
+                try:
+                    payload = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield _sse("broadcast", payload)
+                except asyncio.TimeoutError:
+                    # Keep-alive
+                    yield ":ping\n\n"
+        finally:
+            await _broadcast_bus.unsubscribe(q)
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/ask_stream")

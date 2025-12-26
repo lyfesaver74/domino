@@ -254,6 +254,38 @@ function appendSystem(text) {
   chatEl.scrollTop = chatEl.scrollHeight;
 }
 
+// ---- Broadcast stream (voice replies into open chat windows) ----
+let broadcastES = null;
+function startBroadcastStream() {
+  try {
+    if (broadcastES) return;
+    broadcastES = new EventSource('/api/broadcast/stream');
+    broadcastES.addEventListener('broadcast', (ev) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(ev.data);
+      } catch (_) {
+        return;
+      }
+
+      if (!payload || payload.kind !== 'assistant_reply') return;
+      const persona = (payload.persona || '').toLowerCase() || 'domino';
+      const text = payload.reply || '';
+      appendMessage(persona, text, persona, {
+        has_audio: !!payload.has_audio,
+        tts_provider: payload.tts_provider || null,
+        source: payload.source || 'broadcast',
+      });
+    });
+
+    broadcastES.onerror = () => {
+      // EventSource will retry automatically; keep quiet.
+    };
+  } catch (_) {
+    // Best-effort only.
+  }
+}
+
 // ---- TTS (mouth) ----
 const synthSupported = 'speechSynthesis' in window;
 let voices = [];
@@ -1282,6 +1314,7 @@ function wireNav() {
 wireNav();
 setActivePage('chat');
 refreshSessionLabel();
+startBroadcastStream();
 
 // Initialize status + settings in the background
 (async () => {
