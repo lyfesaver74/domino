@@ -1,8 +1,6 @@
 (() => {
-  const connEl = document.getElementById('conn');
-  const statusEl = document.getElementById('status');
-  const hintEl = document.getElementById('hint');
-  const tickerEl = document.getElementById('ticker');
+  const rootEl = document.getElementById('root');
+  const subtitleEl = document.getElementById('subtitle');
   const audioUnlockBtn = document.getElementById('audioUnlock');
   const audioErrEl = document.getElementById('audioErr');
 
@@ -14,6 +12,11 @@
   let audioEl = null;
   let audioUnlocked = false;
   let pendingTts = null;
+
+  /** @type {Array<{ text: string, color?: string, persona?: string }>} */
+  const subtitleQueue = [];
+  let subtitleLoopRunning = false;
+  let lastAccent = '#00ffaa';
 
   function setAudioError(message) {
     if (!audioErrEl) return;
@@ -92,32 +95,128 @@
     }
   }
 
-  function setConn(state) {
-    connEl.textContent = state;
-  }
-
-  function setStatus(state, hint, color) {
-    statusEl.textContent = `status: ${state || '—'}`;
-    hintEl.textContent = hint || '—';
-    if (color) {
-      statusEl.style.color = color;
-      hintEl.style.color = color;
+  function setActive(active) {
+    if (!rootEl) return;
+    if (active) {
+      rootEl.classList.remove('idle');
+      rootEl.classList.add('active');
     } else {
-      statusEl.style.color = 'white';
-      hintEl.style.color = 'white';
+      rootEl.classList.remove('active');
+      rootEl.classList.add('idle');
     }
   }
 
-  function appendTickerLine(label, text, color) {
-    const line = document.createElement('div');
-    line.className = 'ticker-line';
-    line.style.color = color || 'white';
-    line.textContent = `${label}: ${text}`;
-    tickerEl.appendChild(line);
+  function setAccent(color) {
+    const c = (color || '').trim();
+    if (!c) return;
+    lastAccent = c;
+    if (rootEl) {
+      rootEl.style.setProperty('--accent', c);
+      // Slightly opaque background dim while active
+      rootEl.style.setProperty('--dim', 'rgba(0, 0, 0, 0.26)');
+    }
+  }
 
-    // Keep last ~6 lines.
-    while (tickerEl.children.length > 6) {
-      tickerEl.removeChild(tickerEl.firstChild);
+  function splitIntoSubtitleBlocks(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return [];
+
+    // Start with sentence-ish splits, then re-pack into readable blocks.
+    const parts = t.split(/(?<=[.!?])\s+/g).filter(Boolean);
+    const blocks = [];
+    let buf = '';
+    const maxChars = 92;
+
+    for (const p of parts.length ? parts : [t]) {
+      if (!buf) {
+        buf = p;
+        continue;
+      }
+      if ((buf + ' ' + p).length <= maxChars) {
+        buf = buf + ' ' + p;
+      } else {
+        blocks.push(buf);
+        buf = p;
+      }
+    }
+    if (buf) blocks.push(buf);
+
+    // If still too long (no punctuation case), hard-wrap by words.
+    const finalBlocks = [];
+    for (const b of blocks) {
+      if (b.length <= maxChars + 25) {
+        finalBlocks.push(b);
+        continue;
+      }
+      const words = b.split(' ');
+      let line = '';
+      for (const w of words) {
+        const candidate = line ? (line + ' ' + w) : w;
+        if (candidate.length <= maxChars) {
+          line = candidate;
+        } else {
+          if (line) finalBlocks.push(line);
+          line = w;
+        }
+      }
+      if (line) finalBlocks.push(line);
+    }
+
+    return finalBlocks;
+  }
+
+  function enqueueSubtitles(text, color, persona) {
+    const blocks = splitIntoSubtitleBlocks(text);
+    if (!blocks.length) return;
+    for (const b of blocks) {
+      subtitleQueue.push({ text: b, color: color || undefined, persona: persona || undefined });
+    }
+    runSubtitleLoop();
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function runSubtitleLoop() {
+    if (subtitleLoopRunning) return;
+    subtitleLoopRunning = true;
+    try {
+      while (subtitleQueue.length) {
+        const item = subtitleQueue.shift();
+        if (!item) continue;
+
+        setAccent(item.color || lastAccent);
+        setActive(true);
+
+        if (subtitleEl) {
+          subtitleEl.textContent = item.text || '';
+          subtitleEl.classList.remove('hide');
+          // Force reflow so transitions apply reliably
+          void subtitleEl.offsetHeight;
+          subtitleEl.classList.add('show');
+        }
+
+        const len = (item.text || '').length;
+        // Subtitle pacing: quick in/out with a slightly cinematic feel.
+        const holdMs = Math.max(1400, Math.min(5200, 900 + len * 38));
+        await sleep(holdMs);
+
+        if (subtitleEl) {
+          subtitleEl.classList.remove('show');
+          subtitleEl.classList.add('hide');
+        }
+        await sleep(260);
+      }
+    } finally {
+      subtitleLoopRunning = false;
+      // Clear text and go idle shortly after last block.
+      if (subtitleEl) {
+        subtitleEl.textContent = '';
+        subtitleEl.classList.remove('show');
+        subtitleEl.classList.remove('hide');
+      }
+      setActive(false);
     }
   }
 
@@ -135,26 +234,23 @@
     try {
       socket = new WebSocket(url);
     } catch (e) {
-      setConn('OFFLINE');
-      setStatus('error', 'WebSocket init failed', '#FFFFFF');
+      setActive(false);
       scheduleReconnect();
       return;
     }
 
     socket.onopen = () => {
-      setConn('ONLINE');
-      setStatus('listening', 'ONLINE', '#FFFFFF');
+      // Stay idle until we have content to display.
+      setActive(false);
     };
 
     socket.onclose = () => {
-      setConn('OFFLINE');
-      setStatus('error', 'Disconnected', '#FFFFFF');
+      setActive(false);
       scheduleReconnect();
     };
 
     socket.onerror = () => {
-      setConn('OFFLINE');
-      setStatus('error', 'Socket error', '#FFFFFF');
+      setActive(false);
     };
 
     socket.onmessage = (ev) => {
@@ -168,22 +264,26 @@
       if (!msg || typeof msg.type !== 'string') return;
 
       if (msg.type === 'status') {
-        setStatus(msg.state, msg.hint, msg.color);
+        // Only use status as a hint for accent color; keep the overlay visually quiet unless speaking.
+        setAccent(msg.color || lastAccent);
         return;
       }
 
       if (msg.type === 'assistant_reply') {
-        appendTickerLine(msg.persona || 'Assistant', msg.text || '', msg.color);
+        setAccent(msg.color || lastAccent);
+        enqueueSubtitles(msg.text || '', msg.color, msg.persona);
         return;
       }
 
       if (msg.type === 'tts_audio') {
+        setAccent(msg.color || lastAccent);
         playTTSAudio(msg.format, msg.audio_b64);
         return;
       }
 
       if (msg.type === 'error') {
-        setStatus('error', msg.message || 'Error', '#FFFFFF');
+        // If an error arrives, briefly show it as a subtitle so it is visible.
+        enqueueSubtitles(msg.message || 'Error', '#FFFFFF', 'System');
         return;
       }
     };
