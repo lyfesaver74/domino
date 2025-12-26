@@ -26,6 +26,41 @@
   let kittAnimRunning = false;
   let kittAnimActiveUntil = 0;
 
+  function applyHostScaleWorkaround() {
+    // Some embedded overlay hosts report a tiny viewport (e.g., 300x150)
+    // while displaying the surface full-screen, which makes content appear
+    // tiny in the top-left. If we detect that, scale the entire root.
+    try {
+      if (!rootEl) return;
+      const vw = window.innerWidth || 0;
+      const vh = window.innerHeight || 0;
+      if (!vw || !vh) return;
+
+      const sw = (window.screen && (window.screen.availWidth || window.screen.width)) || 0;
+      const sh = (window.screen && (window.screen.availHeight || window.screen.height)) || 0;
+      if (!sw || !sh) {
+        rootEl.style.transform = '';
+        rootEl.style.transformOrigin = '';
+        return;
+      }
+
+      const sx = sw / vw;
+      const sy = sh / vh;
+      const s = Math.min(sx, sy);
+
+      // Only apply when it looks obviously wrong.
+      if (s > 1.25 && s < 8) {
+        rootEl.style.transformOrigin = '0 0';
+        rootEl.style.transform = `scale(${s})`;
+      } else {
+        rootEl.style.transform = '';
+        rootEl.style.transformOrigin = '';
+      }
+    } catch (_) {
+      // best-effort
+    }
+  }
+
   function setAudioError(message) {
     if (!audioErrEl) return;
     if (!message) {
@@ -133,7 +168,6 @@
     for (let c = 0; c < COLS; c++) {
       const col = document.createElement('div');
       col.className = 'col';
-      col.style.setProperty('--segs', String(SEGS));
       const segs = [];
 
       // Top-to-bottom order visually; we flip in activation logic.
@@ -342,6 +376,7 @@
       // Stay idle until we have content to display.
       setActive(false);
       ensureKittBuilt();
+      applyHostScaleWorkaround();
     };
 
     socket.onclose = () => {
@@ -396,6 +431,13 @@
       unlockAudio();
     });
   }
+
+  window.addEventListener('resize', () => {
+    applyHostScaleWorkaround();
+  });
+
+  // Apply once at startup too.
+  applyHostScaleWorkaround();
 
   connect();
 })();
