@@ -24,5 +24,16 @@
 **/checkpoints/
 wake-word-pc/models/
 
+# overlay runtime artifacts (keep only Content/ in git)
+wake-word-pc/overlay/*
+!wake-word-pc/overlay/Content/
+!wake-word-pc/overlay/Content/**
+
+# ignore sample scripts in Content (keep our actual overlay runtime)
+wake-word-pc/overlay/Content/*.js
+!wake-word-pc/overlay/Content/overlay.js
+!wake-word-pc/overlay/Content/settings.js
+!wake-word-pc/overlay/Content/user-settings.js
+
 # editor
 **/.vscode/

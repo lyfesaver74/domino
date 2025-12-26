@@ -10,17 +10,21 @@
     <div id="root" class="idle">
       <div id="backdrop" aria-hidden="true"></div>
 
-      <div id="center" role="status" aria-live="polite">
+      <div id="center">
         <div id="kitt" aria-hidden="true"></div>
         <div id="subtitle" class="subtitle" aria-live="polite"></div>
-
-        <div id="audioControls" class="audio-controls">
-          <button id="audioUnlock" class="audio-unlock">Enable Audio</button>
-          <div id="audioErr" class="audio-err"></div>
-        </div>
       </div>
     </div>
 
+    <script>
+      // Desktop overlay hosts often don't let you edit the URL.
+      // Set these values here when you need to debug.
+      window.DOMINO_WS_URL = 'ws://127.0.0.1:8765/ws';
+      // window.DOMINO_DEBUG = true;
+      // window.DOMINO_SIMULATE = true;
+    </script>
+
+    <script src="user-settings.js"></script>
     <script src="overlay.js"></script>
   </body>
 </html>

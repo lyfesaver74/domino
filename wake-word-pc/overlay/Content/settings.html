@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Domino Overlay Settings</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="top">
+        <div>
+          <div class="h1">Domino Overlay Settings</div>
+          <div class="sub">Live preview on the right. Save writes user-settings.js for the real overlay (restart to apply).</div>
+        </div>
+        <div class="actions">
+          <button id="btnReset" class="btn" type="button">Reset</button>
+          <button id="btnCopyUrl" class="btn" type="button">Copy preview URL</button>
+          <button id="btnSave" class="btn primary" type="button">Save</button>
+        </div>
+      </header>
+
+      <main class="main">
+        <section class="panel">
+          <div class="group">
+            <div class="groupTitle">Animation</div>
+
+            <label class="row">
+              <span class="label">Style</span>
+              <select id="animStyle" class="field">
+                <option value="blocks">Blocks (current)</option>
+                <option value="kitt">KITT</option>
+                <option value="wave">Wave</option>
+              </select>
+            </label>
+
+            <label class="row">
+              <span class="label">Column gap</span>
+              <input id="colGap" class="field" type="range" min="10" max="60" step="1" />
+              <span id="colGapVal" class="val"></span>
+            </label>
+
+            <label class="row">
+              <span class="label">Segment gap</span>
+              <input id="segGap" class="field" type="range" min="0" max="12" step="1" />
+              <span id="segGapVal" class="val"></span>
+            </label>
+
+            <label class="row">
+              <span class="label">Glow strength</span>
+              <input id="glow" class="field" type="range" min="0" max="40" step="1" />
+              <span id="glowVal" class="val"></span>
+            </label>
+
+            <label class="row">
+              <span class="label">Idle center glow</span>
+              <input id="idleGlow" class="field" type="range" min="0" max="35" step="1" />
+              <span id="idleGlowVal" class="val"></span>
+            </label>
+          </div>
+
+          <div class="group">
+            <div class="groupTitle">Backdrop</div>
+
+            <label class="row">
+              <span class="label">Background opacity</span>
+              <input id="backdrop" class="field" type="range" min="0" max="0.55" step="0.01" />
+              <span id="backdropVal" class="val"></span>
+            </label>
+          </div>
+
+          <div class="group">
+            <div class="groupTitle">Subtitles</div>
+
+            <label class="row">
+              <span class="label">Font size</span>
+              <input id="subSize" class="field" type="range" min="18" max="72" step="1" />
+              <span id="subSizeVal" class="val"></span>
+            </label>
+
+            <label class="row">
+              <span class="label">Y offset</span>
+              <input id="subOffset" class="field" type="range" min="-80" max="120" step="1" />
+              <span id="subOffsetVal" class="val"></span>
+            </label>
+
+            <label class="row">
+              <span class="label">Shadow strength</span>
+              <input id="subShadow" class="field" type="range" min="0" max="100" step="1" />
+              <span id="subShadowVal" class="val"></span>
+            </label>
+          </div>
+
+          <div class="group">
+            <div class="groupTitle">Preview</div>
+            <div class="hint">
+              The preview loads <code>index.html</code>.
+              Settings apply live via postMessage and are also encoded into the preview URL.
+            </div>
+
+            <label class="row">
+              <span class="label">Simulation</span>
+              <input id="previewSim" class="check" type="checkbox" />
+              <span class="val"></span>
+            </label>
+
+            <label class="row">
+              <span class="label">Debug</span>
+              <input id="previewDebug" class="check" type="checkbox" />
+              <span class="val"></span>
+            </label>
+
+            <div class="urlRow">
+              <input id="previewUrl" class="url" readonly aria-label="Preview URL" />
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="groupTitle">Save</div>
+            <div class="hint">
+              Click <b>Save</b> to download <code>user-settings.js</code>. Replace the file at
+              <code>overlay/Content/user-settings.js</code>, then restart <code>HtmlWindowsOverlay.exe</code>.
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="groupTitle">Debug</div>
+            <div class="hint">
+              Live debug readout from the overlay preview (moved off the overlay itself).
+            </div>
+            <pre id="debugText" class="debugText" aria-label="Overlay debug"></pre>
+          </div>
+        </section>
+
+        <section class="preview">
+          <iframe id="frame" class="frame" title="Overlay preview"></iframe>
+        </section>
+      </main>
+    </div>
+
+    <script src="settings.js"></script>
+  </body>
+</html>
