@@ -197,10 +197,17 @@
       const segs = segEls[c];
       if (!segs) continue;
 
-      // Segs are stored top->bottom; light from bottom up.
+      // Segs are stored top->bottom.
+      // KITT voicebox grows from the center outward (up and down), not from the bottom.
+      const center = (SEGS - 1) / 2;
+      const half = Math.floor(nOn / 2);
+      const extra = (nOn % 2);
+
+      const lo = Math.ceil(center - half);
+      const hi = Math.floor(center + half + extra);
+
       for (let i = 0; i < SEGS; i++) {
-        const fromBottom = SEGS - 1 - i;
-        if (fromBottom < nOn) segs[i].classList.add('on');
+        if (i >= lo && i <= hi && nOn > 0) segs[i].classList.add('on');
         else segs[i].classList.remove('on');
       }
     }
