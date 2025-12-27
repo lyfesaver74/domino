@@ -3,7 +3,7 @@
 // Replace overlay/Content/user-settings.js with this file, then restart HtmlWindowsOverlay.exe
 // Note: Simulation/Debug are supported via window.DOMINO_SIMULATE / window.DOMINO_DEBUG.
 
-window.DOMINO_SIMULATE = true;
+window.DOMINO_SIMULATE = false;
 window.DOMINO_DEBUG = false;
 
 window.DOMINO_OVERLAY_SETTINGS = {

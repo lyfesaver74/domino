@@ -155,8 +155,19 @@ html, body {
   background-position: 0 0, var(--col-pos, 50%) 0;
 
   box-shadow:
-    0 0 var(--glow1) var(--accent),
-    0 0 var(--glow2) var(--accent);
+    0 0 var(--core-glow1, var(--glow1)) var(--accent),
+    0 0 var(--core-glow2, var(--glow2)) var(--accent);
+}
+
+@keyframes dominoCenterSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Thinking: during the collapsed/rest phase, spin the center block. */
+#root.state-thinking.rest-phase .seg.center-core {
+  animation: dominoCenterSpin 900ms linear infinite;
+  transform-origin: 50% 50%;
 }
 
 .subtitle {

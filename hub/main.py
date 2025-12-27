@@ -679,6 +679,12 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "mistral-local")
 # LM Studio model identifier (also used as the mode name)
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-nemo-base-2407")
 
+# Safety/perf guards for local models.
+# Without an explicit cap, some OpenAI-compatible servers default to unlimited generation
+# (e.g., n_predict=-1) which can lead to repeated "context full, shifting" loops.
+MISTRAL_TIMEOUT_S = float(os.getenv("MISTRAL_TIMEOUT_S", "90"))
+MISTRAL_MAX_TOKENS = int(os.getenv("MISTRAL_MAX_TOKENS", "256"))
+
 _mistral_clients_lock = Lock()
 _mistral_clients: Dict[str, OpenAI] = {}
 
@@ -688,7 +694,7 @@ def _get_mistral_client(base_url: str) -> OpenAI:
     with _mistral_clients_lock:
         client = _mistral_clients.get(url)
         if client is None:
-            client = OpenAI(base_url=url, api_key=MISTRAL_API_KEY)
+            client = OpenAI(base_url=url, api_key=MISTRAL_API_KEY, timeout=MISTRAL_TIMEOUT_S)
             _mistral_clients[url] = client
         return client
 
@@ -1290,10 +1296,20 @@ async def call_mistral(system_prompt: str, user_text: str, context: Optional[Con
     def _do_call() -> str:
         client = _get_mistral_client(base_url)
         try:
+            max_tokens = int(MISTRAL_MAX_TOKENS)
+            if max_tokens < 1:
+                max_tokens = 1
+            if max_tokens > 4096:
+                max_tokens = 4096
+
             resp = client.chat.completions.create(
                 model=MISTRAL_MODEL,
                 messages=cast(Any, messages),
                 temperature=0.6,
+                max_tokens=max_tokens,
+                # Light stop strings to reduce the chance of the model continuing forever
+                # in OpenAI-compatible servers that don't enforce good defaults.
+                stop=["\n\nUser:", "\n\nSystem:", "\n\nAssistant:"] ,
             )
             return resp.choices[0].message.content or ""
         except Exception as e:  # noqa: BLE001

@@ -41,11 +41,14 @@
   const SEGS = 17;
   /** @type {HTMLElement[][]} */
   const segEls = [];
+  /** @type {HTMLElement | null} */
+  let centerCoreEl = null;
   let kittAnimRunning = false;
   let kittAnimActiveUntil = 0;
   let statusIdleTimer = null;
   let lastMessageAt = 0;
   let wsState = 'init';
+  let statusState = 'listening';
   let debugEnabled = false;
   let lastDebugPostAt = 0;
   let lastDebugText = '';
@@ -521,12 +524,26 @@
     }
   }
 
+  function setStatusClasses(state) {
+    if (!rootEl) return;
+    const s = String(state || '').trim().toLowerCase();
+    statusState = s || 'listening';
+
+    // Keep class list small and explicit.
+    rootEl.classList.toggle('state-recording', s === 'recording');
+    rootEl.classList.toggle('state-thinking', s === 'thinking');
+    // Clear the phase marker; it will be recomputed by the animation loop.
+    rootEl.classList.remove('rest-phase');
+  }
+
   function setStatusState(state) {
     const s = String(state || '').trim().toLowerCase();
     if (statusIdleTimer) {
       clearTimeout(statusIdleTimer);
       statusIdleTimer = null;
     }
+
+    setStatusClasses(s);
 
     // Show the overlay while we're doing anything other than idle listening.
     if (s && s !== 'listening') {
@@ -556,6 +573,9 @@
     if (segEls.length) return;
     kittEl.innerHTML = '';
 
+    const centerCol = 3;
+    const centerSeg = Math.round((SEGS - 1) / 2);
+
     for (let c = 0; c < COLS; c++) {
       const col = document.createElement('div');
       col.className = 'col';
@@ -568,6 +588,10 @@
       for (let s = 0; s < SEGS; s++) {
         const seg = document.createElement('div');
         seg.className = 'seg';
+        if (c === centerCol && s === centerSeg) {
+          seg.classList.add('center-core');
+          centerCoreEl = seg;
+        }
         seg.style.setProperty('--p', '0');
         col.appendChild(seg);
         segs.push(seg);
@@ -684,11 +708,60 @@
     kittAnimRunning = true;
     const start = performance.now();
 
+    let lastCoreGlowKey = '';
+    function setCenterCoreGlowFromG2(g2) {
+      if (!centerCoreEl) return;
+      const g2n = Math.round(clamp(g2, 0, 60));
+      const g1n = Math.max(0, Math.round(g2n * 0.55));
+      const key = `${g1n}:${g2n}`;
+      if (key === lastCoreGlowKey) return;
+      lastCoreGlowKey = key;
+      centerCoreEl.style.setProperty('--core-glow1', `${g1n}px`);
+      centerCoreEl.style.setProperty('--core-glow2', `${g2n}px`);
+    }
+
+    function clearCenterCoreGlowOverride() {
+      if (!centerCoreEl) return;
+      if (!lastCoreGlowKey) return;
+      lastCoreGlowKey = '';
+      centerCoreEl.style.removeProperty('--core-glow1');
+      centerCoreEl.style.removeProperty('--core-glow2');
+    }
+
     const tick = (t) => {
       const now = Date.now();
       const active = now < kittAnimActiveUntil;
       const connected = !!(rootEl && rootEl.classList.contains('connected'));
+
+      if (rootEl) rootEl.classList.remove('rest-phase');
+
+      // During recording/thinking, keep the bar in the single-center-block rest pose.
+      // This makes the effects obvious and prevents the whole stack from "pulsing".
+      if (rootEl && overlaySettings.animStyle === 'kitt') {
+        const inRecording = rootEl.classList.contains('state-recording');
+        const inThinking = rootEl.classList.contains('state-thinking');
+        if (inRecording || inThinking) {
+          const dt = (t - start) / 1000;
+          rootEl.classList.add('rest-phase');
+
+          // Recording: pulse brightness + center-only glow.
+          if (inRecording) {
+            const pulseB = 0.78 + 0.22 * (0.5 + 0.5 * Math.sin(dt * 2 * Math.PI * 1.55));
+            const pulseG = 0.82 + 0.48 * (0.5 + 0.5 * Math.sin(dt * 2 * Math.PI * 1.25));
+            setCenterCoreGlowFromG2(overlaySettings.glow * pulseG);
+            renderClassicKitt([0,0,0,0,0,0,0], { idle: false, baseline: clamp01(pulseB) });
+          } else {
+            // Thinking: steady brightness, no extra glow override.
+            clearCenterCoreGlowOverride();
+            renderClassicKitt([0,0,0,0,0,0,0], { idle: false, baseline: 1 });
+          }
+
+          requestAnimationFrame(tick);
+          return;
+        }
+      }
       if (!active && !subtitleLoopRunning && !connected) {
+        clearCenterCoreGlowOverride();
         // When disconnected, keep non-blocks styles showing the single resting segment
         // instead of going fully dark between spikes.
         if (overlaySettings.animStyle !== 'blocks') {
@@ -704,6 +777,7 @@
       }
 
       if (!active && connected) {
+        clearCenterCoreGlowOverride();
         if (overlaySettings.animStyle === 'blocks') {
           // Subtle idle pulse while connected (no backdrop dim).
           const dtIdle = (t - start) / 1000;
@@ -803,8 +877,15 @@
         // in both sim and live modes, so it never fades out then jumps back.
         // Blend the single rest segment in earlier to avoid a "dark gap" at the tail.
         const baseline = 1 - smoothstep01(e / 0.28);
+        const restPhase = baseline > 0.82;
+        if (rootEl) rootEl.classList.toggle('rest-phase', restPhase);
+
+        // No per-state overrides here anymore; recording/thinking are handled
+        // by the force-rest branch above.
+        clearCenterCoreGlowOverride();
         renderClassicKitt(levels, { idle: false, baseline });
       } else if (overlaySettings.animStyle === 'wave') {
+        clearCenterCoreGlowOverride();
         // Wave: previous "talking" motion (kept as an option).
         const e = clamp01(0.10 + 0.90 * (0.55 + 0.45 * Math.sin(dt * 6.2)));
         const e2 = clamp01(0.30 + 0.70 * (0.55 + 0.45 * Math.sin(dt * 3.1 + 0.8)));
@@ -817,6 +898,7 @@
         }
         renderClassicKitt(levels, { idle: false });
       } else {
+        clearCenterCoreGlowOverride();
         // Blocks: bouncy, slightly phase-shifted.
         const base = 0.55 + 0.45 * Math.sin(dt * 5.2);
         const levels = [];
