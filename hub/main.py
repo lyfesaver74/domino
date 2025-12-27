@@ -280,7 +280,15 @@ MEMORY_ADMIN_TOKEN = os.getenv("MEMORY_ADMIN_TOKEN", "")
 
 AUTO_PROMOTE_STATE_DEFAULT = os.getenv("AUTO_PROMOTE_STATE_DEFAULT", "false").strip().lower() in ("1", "true", "yes", "on")
 
-WHISPER_URL = os.getenv("WHISPER_URL", "").rstrip("/")
+WHISPER_URL = os.getenv("WHISPER_URL", "").strip().rstrip("/")
+if not WHISPER_URL:
+    # Inside Docker Compose, the whisper service is reachable by DNS name "whisper".
+    # Defaulting here avoids STT breaking if WHISPER_URL is missing from .env.
+    try:
+        if Path("/.dockerenv").exists():
+            WHISPER_URL = "http://whisper:9000"
+    except Exception:
+        pass
 WHISPER_TIMEOUT = float(os.getenv("WHISPER_TIMEOUT", "60"))
 
 
