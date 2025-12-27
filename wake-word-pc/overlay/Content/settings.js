@@ -161,6 +161,7 @@
       '// Auto-generated user overrides for the Domino overlay.',
       '//',
       '// Replace overlay/Content/user-settings.js with this file, then restart HtmlWindowsOverlay.exe',
+      '// Note: Simulation/Debug are controlled via window.DOMINO_SIMULATE / window.DOMINO_DEBUG.',
       '',
       `window.DOMINO_SIMULATE = ${sim ? 'true' : 'false'};`,
       `window.DOMINO_DEBUG = ${dbg ? 'true' : 'false'};`,

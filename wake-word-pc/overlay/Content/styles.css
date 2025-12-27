@@ -73,6 +73,12 @@ html, body {
   opacity: 0;
 }
 
+/* In the CEF host we are often both .connected and .active.
+   Ensure "active" can still dim the dashboard. */
+#root.connected.active #backdrop {
+  opacity: 1;
+}
+
 #root.active #center {
   opacity: 1;
 }
@@ -85,7 +91,8 @@ html, body {
   height: min(520px, 40vh);
   display: flex;
   justify-content: center;
-  gap: var(--col-gap);
+  /* NOTE: Chromium 75 (CEF 75) does not support flexbox gap.
+     Use margins on children so user-settings colGap works in the desktop host. */
   align-items: flex-end;
 }
 
@@ -96,8 +103,18 @@ html, body {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: var(--seg-gap);
+  /* NOTE: Chromium 75 (CEF 75) does not support flexbox gap. */
   align-items: stretch;
+  margin-left: calc(var(--col-gap) * 0.5);
+  margin-right: calc(var(--col-gap) * 0.5);
+}
+
+.seg {
+  margin-bottom: var(--seg-gap);
+}
+
+.seg:last-child {
+  margin-bottom: 0;
 }
 
 .seg {
@@ -154,6 +171,9 @@ html, body {
   font-size: 34px;
   font-size: clamp(24px, 2.6vw, 42px);
   line-height: 1.18;
+  /* Prevent 2-line wraps from shifting the KITT bar position.
+     The font size is controlled via JS, so use em-based height. */
+  min-height: calc(2 * 1.18em);
   letter-spacing: 0.2px;
   color: var(--accent);
   position: relative;

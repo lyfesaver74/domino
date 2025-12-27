@@ -88,6 +88,10 @@
   }
 
   function parseNumber(v) {
+    // URLSearchParams.get() returns null when a key is missing.
+    // Number(null) === 0, which would incorrectly override settings to 0.
+    if (v === null || typeof v === 'undefined') return null;
+    if (typeof v === 'string' && v.trim() === '') return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
@@ -244,8 +248,9 @@
   function startSimulation() {
     wsState = 'sim';
     setConnected(true);
-    // Keep in "connected idle" (no dim), but run animation continuously.
-    setActive(false);
+    // In sim mode we want styling changes (including backdrop) to be visible.
+    // Use backdrop=0 as the "no dim" escape hatch.
+    setActive(overlaySettings.backdrop > 0.001);
     ensureKittBuilt();
     applyHostScaleWorkaround();
 
@@ -333,6 +338,63 @@
     } catch (_) {
       // ignore
     }
+  }
+
+  /** @type {HTMLElement | null} */
+  let debugHudEl = null;
+
+  function ensureDebugHud() {
+    if (!debugEnabled) return;
+    if (debugHudEl) return;
+    if (!rootEl) return;
+
+    const el = document.createElement('pre');
+    el.id = 'debugHud';
+    el.style.position = 'fixed';
+    el.style.left = '10px';
+    el.style.top = '10px';
+    el.style.zIndex = '9999';
+    el.style.margin = '0';
+    el.style.padding = '8px 10px';
+    el.style.whiteSpace = 'pre-wrap';
+    el.style.font = '12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+    el.style.color = 'rgba(255,255,255,0.92)';
+    el.style.background = 'rgba(0,0,0,0.55)';
+    el.style.border = '1px solid rgba(255,255,255,0.14)';
+    el.style.borderRadius = '6px';
+    el.style.pointerEvents = 'none';
+    rootEl.appendChild(el);
+    debugHudEl = el;
+  }
+
+  function updateDebugHud() {
+    if (!debugEnabled) return;
+    ensureDebugHud();
+    if (!debugHudEl) return;
+
+    let computedFont = '';
+    try {
+      if (subtitleEl) computedFont = window.getComputedStyle(subtitleEl).fontSize || '';
+    } catch (_) {
+      computedFont = '';
+    }
+
+    let fromUser = '';
+    try {
+      fromUser = window.DOMINO_OVERLAY_SETTINGS ? JSON.stringify(window.DOMINO_OVERLAY_SETTINGS) : '';
+    } catch (_) {
+      fromUser = '(unserializable)';
+    }
+
+    debugHudEl.textContent = [
+      'DOMINO_DEBUG HUD',
+      `simFlag: ${String(window.DOMINO_SIMULATE)}`,
+      `dbgFlag: ${String(window.DOMINO_DEBUG)}`,
+      `overlay.subSize: ${String(overlaySettings.subSize)}px`,
+      `subtitle.computedFontSize: ${computedFont}`,
+      `subtitle.text: ${(subtitleEl && subtitleEl.textContent) ? String(subtitleEl.textContent).slice(0, 80) : ''}`,
+      `userSettings: ${fromUser}`,
+    ].join('\n');
   }
 
   function applyHostScaleWorkaround() {
@@ -486,8 +548,6 @@
     lastAccent = c;
     if (rootEl) {
       rootEl.style.setProperty('--accent', c);
-      // Slightly opaque background dim while active
-      rootEl.style.setProperty('--dim', 'rgba(0, 0, 0, 0.26)');
     }
   }
 
@@ -1011,9 +1071,14 @@
 
   // Apply once at startup too.
   debugEnabled = isDebugEnabled();
-  // Settings precedence: defaults -> user-settings.js -> storage -> URL params
-  applyOverlaySettings(readSettingsFromUserSettings());
-  applyOverlaySettings(readSettingsFromStorage());
+  // Settings precedence:
+  //   defaults -> (storage only if no user-settings) -> user-settings.js -> URL params
+  // Rationale: the settings UI uses localStorage for its own state, but the *overlay*
+  // should treat user-settings.js as the authoritative persisted config.
+  const userOverrides = readSettingsFromUserSettings();
+  const hasUserOverrides = Object.keys(userOverrides).length > 0;
+  if (!hasUserOverrides) applyOverlaySettings(readSettingsFromStorage());
+  applyOverlaySettings(userOverrides);
   applyOverlaySettings(readSettingsFromUrl());
   applyHostScaleWorkaround();
 

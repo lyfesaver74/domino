@@ -92,9 +92,17 @@ class CoreWSServer:
             actual_path = getattr(request, "path", None)
 
         # If we can determine the path and it's wrong, reject.
-        if self._path and actual_path is not None and actual_path != self._path:
-            await ws.close(code=1008, reason="Invalid path")
-            return
+        # Some embedded overlay hosts connect without a path ("/") even if a path is expected.
+        # Accept both the configured path and root for compatibility.
+        if self._path and actual_path is not None:
+            allowed = {self._path, "/", ""}
+            if actual_path not in allowed:
+                print(f"[ws] reject: expected_path={self._path!r} actual_path={actual_path!r}")
+                await ws.close(code=1008, reason="Invalid path")
+                return
+
+        peer = getattr(ws, "remote_address", None)
+        print(f"[ws] client connected peer={peer!r} path={actual_path!r} clients={len(self._clients) + 1}")
 
         self._clients.add(ws)
         try:
@@ -114,10 +122,11 @@ class CoreWSServer:
                 asyncio.create_task(self._run_demo_sequence())
 
             async for _ in ws:
-                # Overlay is dumb renderer; ignore incoming messages for now.
+                # Overlay is dumb renderer; ignore incoming messages.
                 pass
         finally:
             self._clients.discard(ws)
+            print(f"[ws] client disconnected peer={peer!r} clients={len(self._clients)}")
 
     async def _run_demo_sequence(self) -> None:
         # Small delay to ensure overlay has rendered initial ONLINE.

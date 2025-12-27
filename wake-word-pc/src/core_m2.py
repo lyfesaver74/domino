@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import audio_playback
 from core_ws import CoreWSServer
 from hub_client import HubClient, persona_display_name, wake_persona_to_hub
 from overlay_events import actions, assistant_reply, error, status, tts_audio, user_utterance, wake
@@ -31,6 +32,35 @@ async def _wake_record_loop(
     rec_cfg: Dict[str, Any],
     client_cfg: Dict[str, Any],
 ) -> None:
+    output_device = audio_cfg.get("output_device", None)
+    if output_device is not None:
+        try:
+            output_device = int(output_device)
+        except Exception:
+            print(f"[m4] invalid audio.output_device={output_device!r}; using default")
+            output_device = None
+
+    async def _play_tts_audio_b64(audio_b64: str) -> None:
+        try:
+            audio_bytes = base64.b64decode((audio_b64 or "").strip())
+        except Exception as exc:
+            print(f"[m4] audio_b64 decode failed: {exc}")
+            return
+
+        if not audio_bytes:
+            return
+
+        try:
+            print(
+                f"[m4] audio playback start: bytes={len(audio_bytes)} "
+                f"fmt={audio_playback.sniff_audio_format(audio_bytes)!r} "
+                f"output_device={output_device!r}"
+            )
+            await audio_playback.play_audio_bytes(audio_bytes, output_device=output_device)
+            print("[m4] audio playback done")
+        except Exception as exc:
+            print(f"[m4] audio playback failed: {exc}")
+
     while True:
         listener = VoskWakeListener(
             model_path=model_path,
@@ -143,6 +173,9 @@ async def _wake_record_loop(
                                 audio_b64=r.audio_b64,
                             )
                         )
+
+                # Avoid overlapping multiple voices on the device for collective.
+                # (Still broadcasts tts_audio for the overlay visuals.)
             else:
                 # Normal single-persona response.
                 reply_text = (primary.reply or "").strip()
@@ -172,13 +205,17 @@ async def _wake_record_loop(
                         )
                     )
 
-            # Log audio receipt for debugging (do not decode huge payloads unless needed)
+            # Play audio locally (overlay is click-through; browser audio may be blocked).
+            if primary.audio_b64:
+                asyncio.create_task(_play_tts_audio_b64(primary.audio_b64))
+
             if primary.audio_b64:
                 try:
                     audio_bytes = base64.b64decode((primary.audio_b64 or "").strip())
                     print(f"[m4] audio received: {len(audio_bytes)} bytes provider={primary.tts_provider!r}")
-                except Exception as exc:
-                    print(f"[m4] audio_b64 decode failed: {exc}")
+                except Exception:
+                    # decode errors are already printed by playback helper
+                    pass
             else:
                 print(f"[m4] audio_b64 absent provider={primary.tts_provider!r}")
 
