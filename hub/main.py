@@ -288,18 +288,30 @@ WHISPER_TIMEOUT = float(os.getenv("WHISPER_TIMEOUT", "60"))
 # Pre-TTS cue assets (served from /static/pre_tts)
 # -------------------------
 
-PRE_TTS_VIBES = ("unsure", "humor", "surprise", "irked", "normal")
+# Cue files are served from: hub/static/pre_tts/
+# Naming convention: pre-tts-{D|P|J}-{label}-{N}.wav
+#
+# IMPORTANT: There is intentionally no hard-coded max variant count.
+# If you add 6 normals, 3 throat-clears, 12 inhales, etc., the hub will
+# discover and randomly select among whatever exists on disk.
 PRE_TTS_PERSONA_LETTERS = {
     "domino": "D",
     "penny": "P",
     "jimmy": "J",
 }
-PRE_TTS_VARIANTS = 3
 
 
-def _normalize_pre_tts_vibe(v: Optional[str]) -> str:
+_PRE_TTS_LABEL_SAFE_RE = re.compile(r"[^a-z0-9_-]+")
+
+
+def _normalize_pre_tts_label(v: Optional[str]) -> str:
+    # Allow arbitrary labels (e.g. normal|unsure|humor|surprise|irked|throat_clear|inhale).
     s = (v or "").strip().lower()
-    return s if s in PRE_TTS_VIBES else "normal"
+    if not s:
+        return "normal"
+    s = re.sub(r"\s+", "-", s)
+    s = _PRE_TTS_LABEL_SAFE_RE.sub("", s)
+    return s or "normal"
 
 
 def classify_pre_tts_vibe(text: str) -> str:
@@ -369,14 +381,33 @@ def classify_pre_tts_vibe(text: str) -> str:
     return "normal"
 
 
-def _pre_tts_filename(persona_key: str, vibe: str, variant: int) -> str:
+def _pre_tts_list_candidates(*, static_dir: Path, persona_key: str, label: str) -> List[tuple[int, Path]]:
     p = (persona_key or "domino").strip().lower()
     letter = PRE_TTS_PERSONA_LETTERS.get(p, "D")
-    vibe_n = _normalize_pre_tts_vibe(vibe)
-    v = int(variant)
-    if v < 1 or v > PRE_TTS_VARIANTS:
-        v = 1
-    return f"pre-tts-{letter}-{vibe_n}-{v}.wav"
+    l = _normalize_pre_tts_label(label)
+
+    pre_tts_dir = static_dir / "pre_tts"
+    if not pre_tts_dir.exists() or not pre_tts_dir.is_dir():
+        return []
+
+    # Use a regex for robust parsing of the numeric variant.
+    # Example: pre-tts-D-normal-12.wav -> variant=12
+    pat = re.compile(rf"^pre-tts-{re.escape(letter)}-{re.escape(l)}-(\\d+)\\.wav$", re.IGNORECASE)
+    out: List[tuple[int, Path]] = []
+    for pth in pre_tts_dir.glob(f"pre-tts-{letter}-{l}-*.wav"):
+        m = pat.match(pth.name)
+        if not m:
+            continue
+        try:
+            v = int(m.group(1))
+        except Exception:
+            continue
+        if v < 1:
+            continue
+        out.append((v, pth))
+
+    out.sort(key=lambda t: t[0])
+    return out
 
 
 @app.get("/api/pre_tts")
@@ -386,24 +417,37 @@ async def api_pre_tts(persona: str = "domino", vibe: Optional[str] = None, varia
     Returns a URL under /static/pre_tts that any client (PC app, ESP32) can fetch.
     """
     persona_key = (persona or "domino").strip().lower()
-    vibe_n = _normalize_pre_tts_vibe(vibe)
-    v = int(variant) if variant is not None else random.randint(1, PRE_TTS_VARIANTS)
-    fname = _pre_tts_filename(persona_key, vibe_n, v)
-
-    # Validate existence; fall back to normal if missing.
     static_dir = Path(STATIC_DIR)
-    rel = Path("pre_tts") / fname
-    full = static_dir / rel
-    if not full.exists():
-        vibe_n = "normal"
-        fname = _pre_tts_filename(persona_key, vibe_n, v)
-        rel = Path("pre_tts") / fname
+    label = _normalize_pre_tts_label(vibe)
 
+    candidates = _pre_tts_list_candidates(static_dir=static_dir, persona_key=persona_key, label=label)
+    # Fall back to normal if the requested label is missing.
+    if not candidates and label != "normal":
+        label = "normal"
+        candidates = _pre_tts_list_candidates(static_dir=static_dir, persona_key=persona_key, label=label)
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="No pre-TTS cue files found")
+
+    chosen_variant: int
+    chosen_path: Path
+
+    if variant is not None:
+        want = int(variant)
+        exact = next(((v, pth) for (v, pth) in candidates if v == want), None)
+        if exact is not None:
+            chosen_variant, chosen_path = exact
+        else:
+            chosen_variant, chosen_path = random.choice(candidates)
+    else:
+        chosen_variant, chosen_path = random.choice(candidates)
+
+    rel = Path("pre_tts") / chosen_path.name
     return {
         "ok": True,
         "persona": persona_key,
-        "vibe": vibe_n,
-        "variant": v,
+        "vibe": label,
+        "variant": chosen_variant,
         "url": f"/static/{rel.as_posix()}",
         "mime": "audio/wav",
     }

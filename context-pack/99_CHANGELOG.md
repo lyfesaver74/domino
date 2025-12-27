@@ -36,3 +36,4 @@
   - Added `/api/pre_tts` selector that returns a persona/vibe/variant cue URL served from `/static/pre_tts` (so ESP32 and PC app can share the same assets).
   - Wake-word PC app now does: ask(text-only) → overlay `tts_building` → (optional) fetch+play pre‑TTS cue → `/api/tts` → play final TTS.
   - Added dummy cue assets under `hub/static/pre_tts/` (45 silent WAVs) named `pre-tts-{D|P|J}-{vibe}-{1..3}.wav` for 5 vibes × 3 personas × 3 variants.
+  - `/api/pre_tts` now auto-discovers available cue variants on disk (no hard-coded max like 3).
