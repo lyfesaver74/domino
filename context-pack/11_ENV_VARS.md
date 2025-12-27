@@ -22,6 +22,8 @@
 - MISTRAL_BASE_URL (default <http://127.0.0.1:1234/v1>)
 - MISTRAL_API_KEY (default mistral-local)
 - MISTRAL_MODEL (default mistral-nemo-base-2407)
+- MISTRAL_TIMEOUT_S (default 90) — hub-side request timeout guard for local Mistral
+- MISTRAL_MAX_TOKENS (default 256) — hard cap on completion length to avoid runaway generation
 
 ## OpenAI
 

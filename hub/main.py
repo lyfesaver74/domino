@@ -739,7 +739,8 @@ ELEVENLABS_VOICES = {
 # Helpers: actions / cleaning / TTS
 # -------------------------
 
-ACTIONS_RE = re.compile(r"<actions>\s*(\[.*?\])\s*</actions>", re.IGNORECASE | re.DOTALL)
+# Match anything inside <actions>...</actions>. We will validate the payload after parsing.
+ACTIONS_RE = re.compile(r"<actions>\s*(.*?)\s*</actions>", re.IGNORECASE | re.DOTALL)
 # Allow addressing like "Penny, ...", "Penny: ...", or "Penny ..." (no punctuation).
 AUTO_PERSONA_RE = re.compile(
     r"^\s*(domino|penny|jimmy)\b(?:\s*[:,;—–-]\s+|\s+)",
@@ -925,12 +926,22 @@ def clean_reply_text(text: str) -> str:
     # 1) Drop any <think>...</think> blocks (Domino / reasoning models)
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
 
+    # 1b) Drop any <actions>...</actions> blocks (even if malformed)
+    text = ACTIONS_RE.sub("", text)
+
     # 2) Remove simple markdown decoration
     text = re.sub(r"(\*\*|\*|__|_|`)", "", text)
 
-    # 3) Strip leading bullet markers and collapse lines
+    # 3) Strip transcript echoes and collapse lines.
     lines: list[str] = []
     for line in text.splitlines():
+        # Some local models will echo a chat transcript or debug labels. Strip aggressively.
+        if re.match(r"^\s*(context\s*:|user\s*:|assistant\s*:)", line, flags=re.IGNORECASE):
+            continue
+        if re.match(r"^\s*#+\s*action\s*:\s*$", line, flags=re.IGNORECASE):
+            continue
+        if re.match(r"^\s*action\s*:\s*$", line, flags=re.IGNORECASE):
+            continue
         line = re.sub(r"^\s*[-•]\s+", "", line)
         if line.strip():
             lines.append(line.strip())
@@ -951,15 +962,23 @@ def extract_actions(text: str) -> tuple[str, List[Action]]:
     if not match:
         return text, []
 
-    json_blob = match.group(1)
-    try:
-        raw_actions = json.loads(json_blob)
-        if not isinstance(raw_actions, list):
-            raw_actions = [raw_actions]
-        actions = [Action(**a) for a in raw_actions]
-    except Exception as e:  # noqa: BLE001
-        print(f"[DominoHub] Failed to parse actions: {e}")
-        return text, []
+    json_blob = (match.group(1) or "").strip()
+
+    actions: List[Action] = []
+    if json_blob:
+        try:
+            raw = json.loads(json_blob)
+            raw_items = raw if isinstance(raw, list) else [raw]
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+                # Only accept valid Action objects.
+                if "type" not in item or "data" not in item:
+                    continue
+                actions.append(Action(**item))
+        except Exception as e:  # noqa: BLE001
+            # Intentionally non-fatal: we still strip the <actions> block so it isn't shown/spoken.
+            print(f"[DominoHub] Failed to parse actions: {e}")
 
     cleaned = ACTIONS_RE.sub("", text).strip()
     return cleaned, actions

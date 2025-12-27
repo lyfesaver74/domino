@@ -278,6 +278,30 @@ class MemoryStore:
         now = time.time()
         with self._connect() as conn:
             cur = conn.cursor()
+
+            # De-dupe common retry patterns.
+            # If an upstream LLM call fails/hangs after we record the user turn,
+            # the next retry can otherwise store identical "User: ..." lines twice.
+            try:
+                cur.execute(
+                    """
+                    SELECT content, ts
+                    FROM chat_messages
+                    WHERE session_id=? AND persona=? AND role=?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (session_id, persona, role),
+                )
+                row = cur.fetchone()
+                if row:
+                    last_content = (row["content"] or "").strip()
+                    last_ts = float(row["ts"] or 0.0)
+                    if last_content == content.strip() and (now - last_ts) < 300.0:
+                        return
+            except Exception:
+                pass
+
             cur.execute(
                 "INSERT INTO chat_messages(session_id, persona, role, content, ts) VALUES (?, ?, ?, ?, ?)",
                 (session_id, persona, role, content, now),
