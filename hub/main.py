@@ -13,6 +13,7 @@ import base64
 import asyncio
 import time
 import uuid
+import random
 
 import logging
 
@@ -75,6 +76,8 @@ from schemas import (
     STTResponse,
     PromotedStatePatch,
     TTSTestRequest,
+    TTSRequest,
+    TTSResponse,
     RetrievalUpsertRequest,
     RetrievalQueryRequest,
 )
@@ -279,6 +282,131 @@ AUTO_PROMOTE_STATE_DEFAULT = os.getenv("AUTO_PROMOTE_STATE_DEFAULT", "false").st
 
 WHISPER_URL = os.getenv("WHISPER_URL", "").rstrip("/")
 WHISPER_TIMEOUT = float(os.getenv("WHISPER_TIMEOUT", "60"))
+
+
+# -------------------------
+# Pre-TTS cue assets (served from /static/pre_tts)
+# -------------------------
+
+PRE_TTS_VIBES = ("unsure", "humor", "surprise", "irked", "normal")
+PRE_TTS_PERSONA_LETTERS = {
+    "domino": "D",
+    "penny": "P",
+    "jimmy": "J",
+}
+PRE_TTS_VARIANTS = 3
+
+
+def _normalize_pre_tts_vibe(v: Optional[str]) -> str:
+    s = (v or "").strip().lower()
+    return s if s in PRE_TTS_VIBES else "normal"
+
+
+def classify_pre_tts_vibe(text: str) -> str:
+    """Very small heuristic classifier.
+
+    This is intentionally simple and debuggable; if you want better accuracy,
+    we can later switch to an explicit model-produced tag.
+    """
+    t = (text or "").strip().lower()
+    if not t:
+        return "normal"
+
+    # Unsure / hedging
+    unsure_markers = (
+        "i'm not sure",
+        "im not sure",
+        "i'm unsure",
+        "i dont know",
+        "i don't know",
+        "hard to say",
+        "it depends",
+        "might be",
+        "may be",
+        "possibly",
+        "likely",
+        "i can't confirm",
+        "i cannot confirm",
+    )
+    if any(m in t for m in unsure_markers):
+        return "unsure"
+
+    # Humor (light)
+    humor_markers = (
+        "haha",
+        "lol",
+        "that's funny",
+        "thats funny",
+        "joke",
+        "pun",
+    )
+    if any(m in t for m in humor_markers):
+        return "humor"
+
+    # Surprise
+    surprise_markers = (
+        "wow",
+        "surprisingly",
+        "unexpected",
+        "plot twist",
+        "didn't expect",
+        "did not expect",
+    )
+    if any(m in t for m in surprise_markers):
+        return "surprise"
+
+    # Irked / annoyed
+    irked_markers = (
+        "ugh",
+        "annoying",
+        "that's frustrating",
+        "thats frustrating",
+        "seriously",
+    )
+    if any(m in t for m in irked_markers):
+        return "irked"
+
+    return "normal"
+
+
+def _pre_tts_filename(persona_key: str, vibe: str, variant: int) -> str:
+    p = (persona_key or "domino").strip().lower()
+    letter = PRE_TTS_PERSONA_LETTERS.get(p, "D")
+    vibe_n = _normalize_pre_tts_vibe(vibe)
+    v = int(variant)
+    if v < 1 or v > PRE_TTS_VARIANTS:
+        v = 1
+    return f"pre-tts-{letter}-{vibe_n}-{v}.wav"
+
+
+@app.get("/api/pre_tts")
+async def api_pre_tts(persona: str = "domino", vibe: Optional[str] = None, variant: Optional[int] = None) -> Dict[str, Any]:
+    """Pick a pre-TTS cue audio file.
+
+    Returns a URL under /static/pre_tts that any client (PC app, ESP32) can fetch.
+    """
+    persona_key = (persona or "domino").strip().lower()
+    vibe_n = _normalize_pre_tts_vibe(vibe)
+    v = int(variant) if variant is not None else random.randint(1, PRE_TTS_VARIANTS)
+    fname = _pre_tts_filename(persona_key, vibe_n, v)
+
+    # Validate existence; fall back to normal if missing.
+    static_dir = Path(STATIC_DIR)
+    rel = Path("pre_tts") / fname
+    full = static_dir / rel
+    if not full.exists():
+        vibe_n = "normal"
+        fname = _pre_tts_filename(persona_key, vibe_n, v)
+        rel = Path("pre_tts") / fname
+
+    return {
+        "ok": True,
+        "persona": persona_key,
+        "vibe": vibe_n,
+        "variant": v,
+        "url": f"/static/{rel.as_posix()}",
+        "mime": "audio/wav",
+    }
 
 
 def _session_id_from_req(req: AskRequest) -> str:
@@ -996,6 +1124,26 @@ async def api_tts_test(req: TTSTestRequest) -> Dict[str, Any]:
     }
 
 
+@app.post("/api/tts", response_model=TTSResponse)
+async def api_tts(req: TTSRequest) -> TTSResponse:
+    persona = (req.persona or "domino").lower().strip()
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    session_id = (req.session_id or "default").strip() or "default"
+    try:
+        memory_store.touch_session(session_id, max_age_days=SESSION_MAX_AGE_DAYS)
+    except Exception:
+        pass
+
+    promoted = memory_store.get_promoted_state()
+    tts_pref = (req.tts_pref or "").strip() or _pick_tts_pref(promoted, persona)
+
+    audio_b64, provider = await generate_tts(persona, text, tts_pref=tts_pref)
+    return TTSResponse(audio_b64=audio_b64, tts_provider=provider)
+
+
 @app.get("/api/memory/promoted")
 async def api_get_promoted_state() -> Dict[str, Any]:
     return memory_store.get_promoted_state()
@@ -1373,6 +1521,7 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
     except Exception:
         pass
     promoted = memory_store.get_promoted_state()
+    do_tts = bool(getattr(req, "tts", True))
 
     # 1) "Collective" mode: Auto can fan-out to all three
     if req_persona == "auto" and (COLLECTIVE_RE.search(req.text or "") or len(_mentioned_personas_in_order(req.text or "")) >= 2):
@@ -1404,17 +1553,23 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
             if execute:
                 await execute_actions(actions)
 
-            audio_b64, provider = await generate_tts(
-                persona_key,
-                cleaned_reply,
-                tts_pref=_pick_tts_pref(promoted, persona_key),
-            )
+            pre_tts_vibe = classify_pre_tts_vibe(cleaned_reply)
+
+            if do_tts:
+                audio_b64, provider = await generate_tts(
+                    persona_key,
+                    cleaned_reply,
+                    tts_pref=_pick_tts_pref(promoted, persona_key),
+                )
+            else:
+                audio_b64, provider = None, None
             return AskResponse(
                 persona=persona_key,
                 reply=cleaned_reply,
                 actions=actions,
                 audio_b64=audio_b64,
                 tts_provider=provider,
+                pre_tts_vibe=pre_tts_vibe,
             )
 
         results = await asyncio.gather(*[one(p) for p in targets])
@@ -1424,6 +1579,7 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
             actions=[],
             audio_b64=None,
             tts_provider=None,
+            pre_tts_vibe=None,
             responses=results,
         )
 
@@ -1470,12 +1626,17 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
     if execute:
         await execute_actions(actions)
 
+    pre_tts_vibe = classify_pre_tts_vibe(cleaned_reply)
+
     # 4) Generate TTS from the cleaned text (not the messy raw one)
-    audio_b64, provider = await generate_tts(
-        effective_persona,
-        cleaned_reply,
-        tts_pref=_pick_tts_pref(promoted, effective_persona),
-    )
+    if do_tts:
+        audio_b64, provider = await generate_tts(
+            effective_persona,
+            cleaned_reply,
+            tts_pref=_pick_tts_pref(promoted, effective_persona),
+        )
+    else:
+        audio_b64, provider = None, None
 
     # 5) Return clean text + actions + audio metadata
     res = AskResponse(
@@ -1484,6 +1645,7 @@ async def api_ask(req: AskRequest, execute: bool = True) -> AskResponse:
         actions=actions,
         audio_b64=audio_b64,
         tts_provider=provider,
+        pre_tts_vibe=pre_tts_vibe,
     )
 
     # Broadcast /api/ask replies (used by the PC wake-word voice flow)

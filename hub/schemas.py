@@ -17,6 +17,8 @@ class AskRequest(BaseModel):
     room: Optional[str] = None
     context: Optional[Context] = None
     session_id: Optional[str] = None
+    # If false, /api/ask returns text/actions only (no audio generation).
+    tts: bool = True
 
 
 class Action(BaseModel):
@@ -30,6 +32,9 @@ class AskResponse(BaseModel):
     actions: List[Action] = Field(default_factory=list)
     audio_b64: Optional[str] = None
     tts_provider: Optional[str] = None
+    # Optional hint for selecting a short "pre-TTS" cue during synthesis.
+    # Expected values: unsure|humor|surprise|irked|normal
+    pre_tts_vibe: Optional[str] = None
     responses: Optional[List[AskResponse]] = None
 
 
@@ -58,6 +63,19 @@ class TTSTestRequest(BaseModel):
     text: str
     provider: str = "fish"
     reference_id: Optional[str] = None
+
+
+class TTSRequest(BaseModel):
+    persona: str = "domino"
+    text: str
+    # Optional override (auto|fish|elevenlabs|browser|off). If omitted, hub uses promoted-state preference.
+    tts_pref: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class TTSResponse(BaseModel):
+    audio_b64: Optional[str] = None
+    tts_provider: Optional[str] = None
 
 
 class PromotedStatePatch(BaseModel):

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import audio_playback
+import httpx
 from core_ws import CoreWSServer
 from hub_client import HubClient, persona_display_name, wake_persona_to_hub
 from overlay_events import actions, assistant_reply, error, status, tts_audio, user_utterance, wake
@@ -60,6 +61,33 @@ async def _wake_record_loop(
             print("[m4] audio playback done")
         except Exception as exc:
             print(f"[m4] audio playback failed: {exc}")
+
+    def _should_play_pre_tts(reply_text: str) -> bool:
+        # Only pre-roll for responses that are likely to take longer to synth.
+        t = (reply_text or "").strip()
+        return len(t) >= 90 or len(t.split()) >= 18
+
+    async def _play_pre_tts_cue(*, persona_key: str, vibe: str, output_device: Optional[int]) -> None:
+        try:
+            cue = await hub.pre_tts(persona=persona_key, vibe=vibe)
+            if not cue:
+                return
+
+            url = cue.url
+            if not url.startswith("/"):
+                url = "/" + url
+
+            timeout = httpx.Timeout(timeout=20.0, connect=10.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(hub.base_url.rstrip("/") + url)
+                resp.raise_for_status()
+                audio_bytes = resp.content
+            if not audio_bytes:
+                return
+
+            await audio_playback.play_audio_bytes(audio_bytes, output_device=output_device)
+        except Exception as exc:
+            print(f"[m4] pre-tts cue failed: {exc}")
 
     while True:
         listener = VoskWakeListener(
@@ -120,7 +148,8 @@ async def _wake_record_loop(
             persona = wake_persona_to_hub(persona_mode)
             session_id = (client_cfg.get("session_id") or client_cfg.get("device") or None)
 
-            ask_res = await hub.ask(persona=persona, text=user_text, session_id=session_id)
+            # Text first (fast), audio second (explicit) so we can represent a real TTS-building phase.
+            ask_res = await hub.ask(persona=persona, text=user_text, session_id=session_id, tts=False)
             if ask_res is None:
                 await server.broadcast(error(stage="ask", message="Ask failed"))
                 await server.broadcast(status(state="listening", hint="Listening for wake words", color="#FFFFFF"))
@@ -148,6 +177,7 @@ async def _wake_record_loop(
             primary = ask_res.primary
             # If the hub responded with collective fanout, render each persona response.
             if str(primary.persona).strip().casefold() == "collective" and ask_res.responses:
+                await server.broadcast(status(state="tts_building", hint="Building voice…", color=getattr(hit, "color", "#FFFFFF")))
                 for r in ask_res.responses:
                     persona_key = (r.persona or "").strip().casefold()
                     reply_text = (r.reply or "").strip()
@@ -164,18 +194,37 @@ async def _wake_record_loop(
                     if r.actions:
                         await server.broadcast(actions(items=r.actions))
 
-                    if r.audio_b64:
-                        await server.broadcast(
-                            tts_audio(
-                                persona=persona_display_name(persona_key),
-                                color=color,
-                                format=_format_from_provider(r.tts_provider),
-                                audio_b64=r.audio_b64,
+                    # Request TTS explicitly so we can represent the build phase.
+                    if reply_text:
+                        vibe = (getattr(r, "pre_tts_vibe", None) or "normal")
+                        cue_task = None
+                        if _should_play_pre_tts(reply_text):
+                            cue_task = asyncio.create_task(
+                                _play_pre_tts_cue(
+                                    persona_key=persona_key or "domino",
+                                    vibe=vibe,
+                                    output_device=output_device,
+                                )
                             )
-                        )
 
-                # Avoid overlapping multiple voices on the device for collective.
-                # (Still broadcasts tts_audio for the overlay visuals.)
+                        tts_task = asyncio.create_task(hub.tts(persona=persona_key or "domino", text=reply_text, session_id=session_id))
+                        if cue_task is not None:
+                            await cue_task
+                        tts_res = await tts_task
+                        if tts_res and tts_res.audio_b64:
+                            await server.broadcast(
+                                tts_audio(
+                                    persona=persona_display_name(persona_key),
+                                    color=color,
+                                    format=_format_from_provider(tts_res.tts_provider),
+                                    audio_b64=tts_res.audio_b64,
+                                )
+                            )
+                            await server.broadcast(status(state="speaking", hint="Speaking…", color=color))
+                            await _play_tts_audio_b64(tts_res.audio_b64)
+
+                await server.broadcast(status(state="listening", hint="Listening for wake words", color="#FFFFFF"))
+                continue
             else:
                 # Normal single-persona response.
                 reply_text = (primary.reply or "").strip()
@@ -195,31 +244,39 @@ async def _wake_record_loop(
                 if primary.actions:
                     await server.broadcast(actions(items=primary.actions))
 
-                if primary.audio_b64:
+                # Explicit TTS step (real build phase)
+                await server.broadcast(status(state="tts_building", hint="Building voice…", color=color))
+                tts_persona = persona_key or persona
+                vibe = (getattr(primary, "pre_tts_vibe", None) or "normal")
+                cue_task = None
+                if _should_play_pre_tts(reply_text):
+                    cue_task = asyncio.create_task(
+                        _play_pre_tts_cue(
+                            persona_key=tts_persona,
+                            vibe=vibe,
+                            output_device=output_device,
+                        )
+                    )
+
+                tts_task = asyncio.create_task(hub.tts(persona=tts_persona, text=reply_text, session_id=session_id))
+                if cue_task is not None:
+                    await cue_task
+                tts_res = await tts_task
+                if tts_res and tts_res.audio_b64:
                     await server.broadcast(
                         tts_audio(
                             persona=label,
                             color=color,
-                            format=_format_from_provider(primary.tts_provider),
-                            audio_b64=primary.audio_b64,
+                            format=_format_from_provider(tts_res.tts_provider),
+                            audio_b64=tts_res.audio_b64,
                         )
                     )
+                    await server.broadcast(status(state="speaking", hint="Speaking…", color=color))
+                    await _play_tts_audio_b64(tts_res.audio_b64)
+                else:
+                    print(f"[m4] tts returned no audio persona={tts_persona!r}")
 
-            # Play audio locally (overlay is click-through; browser audio may be blocked).
-            if primary.audio_b64:
-                asyncio.create_task(_play_tts_audio_b64(primary.audio_b64))
-
-            if primary.audio_b64:
-                try:
-                    audio_bytes = base64.b64decode((primary.audio_b64 or "").strip())
-                    print(f"[m4] audio received: {len(audio_bytes)} bytes provider={primary.tts_provider!r}")
-                except Exception:
-                    # decode errors are already printed by playback helper
-                    pass
-            else:
-                print(f"[m4] audio_b64 absent provider={primary.tts_provider!r}")
-
-            await server.broadcast(status(state="listening", hint="Listening for wake words", color="#FFFFFF"))
+                await server.broadcast(status(state="listening", hint="Listening for wake words", color="#FFFFFF"))
 
 
 async def _main() -> None:

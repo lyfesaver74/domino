@@ -18,12 +18,27 @@ class HubAskSingle:
     actions: List[Dict[str, Any]]
     audio_b64: Optional[str]
     tts_provider: Optional[str]
+    pre_tts_vibe: Optional[str]
 
 
 @dataclass(frozen=True)
 class HubAskResult:
     primary: HubAskSingle
     responses: List[HubAskSingle]
+
+
+@dataclass(frozen=True)
+class HubTTSResult:
+    audio_b64: Optional[str]
+    tts_provider: Optional[str]
+
+
+@dataclass(frozen=True)
+class HubPreTTSResult:
+    url: str
+    mime: str
+    vibe: str
+    variant: int
 
 
 def _as_list(v: Any) -> List[Any]:
@@ -41,6 +56,7 @@ def _parse_ask_single(data: Dict[str, Any]) -> HubAskSingle:
         actions=[a for a in _as_list(data.get("actions")) if isinstance(a, dict)],
         audio_b64=data.get("audio_b64"),
         tts_provider=data.get("tts_provider"),
+        pre_tts_vibe=data.get("pre_tts_vibe"),
     )
 
 
@@ -49,6 +65,7 @@ class HubClient:
         self._base_url = (base_url or "").rstrip("/")
         self._stt_path = stt_path or "/api/stt"
         self._ask_path = ask_path or "/api/ask"
+        self._tts_path = "/api/tts"
         self._timeout_s = float(timeout_s or 60.0)
 
     def _url(self, path: str) -> str:
@@ -57,6 +74,10 @@ class HubClient:
         if not path.startswith("/"):
             path = "/" + path
         return self._base_url + path
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
 
     async def stt(self, *, wav_bytes: bytes, filename: str = "utterance.wav") -> Optional[HubSTTResult]:
         if not wav_bytes:
@@ -93,6 +114,7 @@ class HubClient:
         room: Optional[str] = None,
         session_id: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
+        tts: bool = True,
     ) -> Optional[HubAskResult]:
         payload: Dict[str, Any] = {
             "persona": persona,
@@ -100,6 +122,7 @@ class HubClient:
             "room": room,
             "session_id": session_id,
             "context": context,
+            "tts": bool(tts),
         }
 
         timeout = httpx.Timeout(timeout=self._timeout_s, connect=min(10.0, self._timeout_s))
@@ -130,6 +153,74 @@ class HubClient:
             return None
         except Exception as e:
             print(f"[HubClient] Ask Unexpected Error: {e}")
+            return None
+
+    async def tts(
+        self,
+        *,
+        persona: str,
+        text: str,
+        session_id: Optional[str] = None,
+        tts_pref: Optional[str] = None,
+    ) -> Optional[HubTTSResult]:
+        payload: Dict[str, Any] = {
+            "persona": persona,
+            "text": text,
+            "session_id": session_id,
+            "tts_pref": tts_pref,
+        }
+
+        timeout = httpx.Timeout(timeout=self._timeout_s, connect=min(10.0, self._timeout_s))
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(self._url(self._tts_path), json=payload)
+                resp.raise_for_status()
+                data = resp.json() or {}
+
+            return HubTTSResult(audio_b64=data.get("audio_b64"), tts_provider=data.get("tts_provider"))
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            msg = str(e).strip() or repr(e)
+            print(f"[HubClient] TTS Connection Failed: {msg}")
+            return None
+        except httpx.HTTPStatusError as e:
+            print(f"[HubClient] TTS Server Error ({e.response.status_code}): {e}")
+            return None
+        except Exception as e:
+            print(f"[HubClient] TTS Unexpected Error: {e}")
+            return None
+
+    async def pre_tts(self, *, persona: str, vibe: str) -> Optional[HubPreTTSResult]:
+        params = {"persona": persona, "vibe": vibe}
+        timeout = httpx.Timeout(timeout=self._timeout_s, connect=min(10.0, self._timeout_s))
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(self._url("/api/pre_tts"), params=params)
+                resp.raise_for_status()
+                data = resp.json() or {}
+
+            url = str(data.get("url") or "")
+            if not url:
+                return None
+
+            return HubPreTTSResult(
+                url=url,
+                mime=str(data.get("mime") or "audio/wav"),
+                vibe=str(data.get("vibe") or "normal"),
+                variant=int(data.get("variant") or 1),
+            )
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            msg = str(e).strip() or repr(e)
+            print(f"[HubClient] PreTTS Connection Failed: {msg}")
+            return None
+        except httpx.HTTPStatusError as e:
+            print(f"[HubClient] PreTTS Server Error ({e.response.status_code}): {e}")
+            return None
+        except Exception as e:
+            print(f"[HubClient] PreTTS Unexpected Error: {e}")
             return None
 
 
