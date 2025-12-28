@@ -109,6 +109,13 @@ except ImportError:
 # -------------------------
 load_dotenv()
 
+
+def _running_in_docker() -> bool:
+    try:
+        return Path("/.dockerenv").exists()
+    except Exception:
+        return False
+
 app = FastAPI(
     title="Domino & Friends Hub",
     version="0.2.0",
@@ -120,6 +127,12 @@ async def api_stt(file: UploadFile = File(...)) -> STTResponse:
     promoted = memory_store.get_promoted_state()
     base_urls = promoted.get("base_urls") or {}
     whisper_url = (base_urls.get("whisper") or "").strip() or WHISPER_URL
+
+    # If promoted state contains the Docker-only DNS name ("whisper") but the hub
+    # is running outside Docker, rewrite to localhost so STT keeps working.
+    if not _running_in_docker() and re.match(r"^https?://whisper(?::\d+)?\b", whisper_url, flags=re.IGNORECASE):
+        whisper_url = "http://127.0.0.1:9000"
+
     whisper_cfg = promoted.get("whisper_stt") or {}
     whisper_timeout = whisper_cfg.get("timeout_sec")
     whisper_timeout = WHISPER_TIMEOUT if whisper_timeout is None else float(whisper_timeout)
@@ -285,7 +298,7 @@ if not WHISPER_URL:
     # Prefer Docker DNS when running inside a container; otherwise use localhost.
     # This keeps both Docker deployments and local-dev runs working without extra config.
     try:
-        if Path("/.dockerenv").exists():
+        if _running_in_docker():
             WHISPER_URL = "http://whisper:9000"
         else:
             WHISPER_URL = "http://127.0.0.1:9000"
@@ -906,18 +919,62 @@ def clean_reply_text(text: str) -> str:
     if not text:
         return text
 
+    # Some upstream OpenAI-compatible servers (or proxies) return *error dumps as
+    # normal assistant text* (e.g. "### Error: ..." followed by a traceback).
+    # Never show those to end users; truncate at the first sign of a dump.
+    #
+    # Note: We intentionally do this before any other transformations.
+    dump_markers = (
+        "### error:",
+        "traceback (most recent call last)",
+        "from langchain",
+        "chatopenai",
+        "asyncstreamingllmchain",
+        "openai_api_key",
+        "langchain.",
+    )
+
+    # Normalize HTML-ish line breaks that can appear from some clients.
+    normalized = re.sub(r"<\s*br\s*/?\s*>", "\n", text, flags=re.IGNORECASE)
+    cut_at: Optional[int] = None
+    lowered = normalized.lower()
+    for marker in dump_markers:
+        idx = lowered.find(marker)
+        if idx != -1:
+            cut_at = idx if cut_at is None else min(cut_at, idx)
+
+    if cut_at is not None:
+        removed = normalized[cut_at:]
+        kept = normalized[:cut_at].rstrip()
+        logger.warning(
+            "[DominoHub] Stripped upstream error dump from reply (kept=%d chars, removed starts=%r)",
+            len(kept),
+            removed[:200],
+        )
+        text = kept
+    else:
+        text = normalized
+
     # 0) Strip any accidental debug/context echoes from the model output.
     # These should never be user-facing, but some models will occasionally repeat system context.
+    # We strip even when embedded mid-sentence, and we tolerate variants like:
+    #   "### Context: user = Lyfe, room=office" or "context:user=...".
     stripped: list[str] = []
     kept_lines: list[str] = []
 
+    context_cut_re = re.compile(r"(?:#+\s*)?context\s*:\s*user\s*=", re.IGNORECASE)
+    noise_cut_re = re.compile(r"noise\s*[_-]?\s*level\s*=", re.IGNORECASE)
+
     for line in text.splitlines():
-        lower = line.lower()
         cut_idx = -1
-        for marker in ("context: user=", "noise_level=", "noiselevel="):
-            idx = lower.find(marker)
-            if idx != -1:
-                cut_idx = idx if cut_idx == -1 else min(cut_idx, idx)
+
+        m_ctx = context_cut_re.search(line)
+        if m_ctx:
+            cut_idx = m_ctx.start()
+
+        m_noise = noise_cut_re.search(line)
+        if m_noise:
+            cut_idx = m_noise.start() if cut_idx == -1 else min(cut_idx, m_noise.start())
 
         if cut_idx != -1:
             removed = line[cut_idx:].strip()
@@ -1499,11 +1556,13 @@ async def route_one_persona(persona_key: str, user_text: str, ctx: Context, sess
         )
 
     cleaned, actions = extract_actions(raw_reply)
+    cleaned_reply = clean_reply_text(cleaned)
 
-    # Persist assistant reply + trim aggressively
-    memory_store.add_chat_message(session_id, persona_key, "assistant", cleaned or "")
+    # Persist assistant reply + trim aggressively (store the cleaned text so we don't
+    # poison history with debug/context echoes or action payload remnants).
+    memory_store.add_chat_message(session_id, persona_key, "assistant", cleaned_reply or "")
     memory_store.trim_history(session_id, persona_key, keep_last=CHAT_HISTORY_LAST_N)
-    return cleaned, actions
+    return cleaned_reply, actions
 
 
 async def route_to_persona(req: AskRequest) -> tuple[str, str, List[Action]]:
@@ -1955,4 +2014,12 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("DOMINO_HUB_PORT", "2424"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # Dev convenience: auto-reload locally; off by default in Docker.
+    # Override with DOMINO_RELOAD=1/true/yes/on if needed.
+    reload_env = os.getenv("DOMINO_RELOAD")
+    if reload_env is None:
+        reload_flag = not _running_in_docker()
+    else:
+        reload_flag = reload_env.strip().lower() in ("1", "true", "yes", "on")
+
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload_flag)

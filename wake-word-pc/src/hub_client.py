@@ -217,6 +217,9 @@ class HubClient:
             print(f"[HubClient] PreTTS Connection Failed: {msg}")
             return None
         except httpx.HTTPStatusError as e:
+            # If the hub doesn't support /api/pre_tts (older builds), treat as "no cue".
+            if e.response is not None and e.response.status_code == 404:
+                return None
             print(f"[HubClient] PreTTS Server Error ({e.response.status_code}): {e}")
             return None
         except Exception as e:
