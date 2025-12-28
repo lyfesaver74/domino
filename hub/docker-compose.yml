@@ -49,6 +49,8 @@ services:
       target: server
       args:
         BACKEND: cuda
+        CUDA_VER: 12.8.0
+        UV_EXTRA: cu128
     container_name: fish-speech-server
     restart: unless-stopped
     networks:
