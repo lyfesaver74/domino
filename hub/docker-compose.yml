@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   domino-hub:
     build: .
@@ -45,7 +43,12 @@ services:
       - whisper_cache:/root/.cache     # cache models between restarts
 
   fish-speech-server:
-    image: fish-speech-server:cu128
+    build:
+      context: ../services/tts-fish/fish-speech
+      dockerfile: docker/Dockerfile
+      target: server
+      args:
+        BACKEND: cuda
     container_name: fish-speech-server
     restart: unless-stopped
     networks:
@@ -65,8 +68,8 @@ services:
       # Checkpoints are required by the Fish image.
       # Ensure /opt/fish_tts/checkpoints contains the model files (or run the
       # container's /app/tools/download_models.py once to populate it).
-        - /opt/tts-fish/checkpoints:/app/checkpoints
-        - /opt/tts-fish/references:/app/references
+      - /opt/tts-fish/checkpoints:/app/checkpoints
+      - /opt/tts-fish/references:/app/references
 
   fish-ui:
     image: nginx:alpine
