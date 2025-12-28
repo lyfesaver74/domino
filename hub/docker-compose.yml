@@ -27,7 +27,7 @@ services:
       - "traefik.http.services.chat.loadbalancer.server.port=2424"
 
   whisper:
-    build: ../whisper_service          # keep whatever you already had here
+    build: ../services/whisper-service
     container_name: whisper-service
     restart: unless-stopped
     networks:
