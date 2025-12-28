@@ -924,24 +924,30 @@ def clean_reply_text(text: str) -> str:
     # Never show those to end users; truncate at the first sign of a dump.
     #
     # Note: We intentionally do this before any other transformations.
-    dump_markers = (
-        "### error:",
-        "traceback (most recent call last)",
-        "from langchain",
-        "chatopenai",
-        "asyncstreamingllmchain",
-        "openai_api_key",
-        "langchain.",
-    )
-
     # Normalize HTML-ish line breaks that can appear from some clients.
     normalized = re.sub(r"<\s*br\s*/?\s*>", "\n", text, flags=re.IGNORECASE)
+
+    # Detect common error-dump patterns returned as assistant text.
+    # Examples seen in the wild:
+    #   "### Error: I'm sorry, I couldn't generate a response..."
+    #   "#### Error: ..." or "++++ Error: ..."
+    dump_res = [
+        re.compile(r"(?:#+|\+{2,})\s*error\s*:\s*", re.IGNORECASE),
+        re.compile(r"traceback\s*\(most\s+recent\s+call\s+last\)", re.IGNORECASE),
+        re.compile(r"\bfrom\s+langchain\b", re.IGNORECASE),
+        re.compile(r"\bchatopenai\b", re.IGNORECASE),
+        re.compile(r"\basyncstreamingllmchain\b", re.IGNORECASE),
+        re.compile(r"\bopenai[_-]?api[_-]?key\b", re.IGNORECASE),
+        re.compile(r"\blangchain\.", re.IGNORECASE),
+        re.compile(r"i\s*couldn\s*'?t\s+generate\s+a\s+response", re.IGNORECASE),
+        re.compile(r"please\s+try\s+again\s+later", re.IGNORECASE),
+    ]
+
     cut_at: Optional[int] = None
-    lowered = normalized.lower()
-    for marker in dump_markers:
-        idx = lowered.find(marker)
-        if idx != -1:
-            cut_at = idx if cut_at is None else min(cut_at, idx)
+    for rx in dump_res:
+        m = rx.search(normalized)
+        if m:
+            cut_at = m.start() if cut_at is None else min(cut_at, m.start())
 
     if cut_at is not None:
         removed = normalized[cut_at:]
