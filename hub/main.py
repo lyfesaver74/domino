@@ -138,7 +138,7 @@ async def api_stt(file: UploadFile = File(...)) -> STTResponse:
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Whisper STT failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Whisper STT failed ({whisper_url}): {e}")
 
     text = (data.get("text") or "").strip()
     return STTResponse(text=text)
@@ -282,13 +282,15 @@ AUTO_PROMOTE_STATE_DEFAULT = os.getenv("AUTO_PROMOTE_STATE_DEFAULT", "false").st
 
 WHISPER_URL = os.getenv("WHISPER_URL", "").strip().rstrip("/")
 if not WHISPER_URL:
-    # Inside Docker Compose, the whisper service is reachable by DNS name "whisper".
-    # Defaulting here avoids STT breaking if WHISPER_URL is missing from .env.
+    # Prefer Docker DNS when running inside a container; otherwise use localhost.
+    # This keeps both Docker deployments and local-dev runs working without extra config.
     try:
         if Path("/.dockerenv").exists():
             WHISPER_URL = "http://whisper:9000"
+        else:
+            WHISPER_URL = "http://127.0.0.1:9000"
     except Exception:
-        pass
+        WHISPER_URL = "http://127.0.0.1:9000"
 WHISPER_TIMEOUT = float(os.getenv("WHISPER_TIMEOUT", "60"))
 
 
