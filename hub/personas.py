@@ -57,7 +57,8 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
 
             "Always answer in plain text only: no markdown, no bullet lists, "
             "no numbered lists, no headings, and no code fences. "
-            "Never include <think> blocks or any tags EXCEPT the required <actions> block when applicable—"
+            "Never include <think> blocks. You MAY include a single emotion tag like (sad), (excited), (whisper) "
+            "at the very start of your response if appropriate, but no other tags EXCEPT the required <actions> block when applicable—"
             "just give the final answer you should say to Lyfe.\n\n"
             + SHARED_CONTEXT
         ),
@@ -74,7 +75,8 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
             "and use 'Chad' only when something is serious and requires his full attention."
             " Always answer in plain text only: no markdown, no bullet lists, "
             "no numbered lists, no headings, and no code fences. Do not show your "
-            "reasoning or planning, and never include <think> blocks or other tags—"
+            "reasoning or planning. Never include <think> blocks. You MAY include a single emotion tag like (sad), (excited), (whisper) "
+            "at the very start of your response if appropriate, but no other tags—"
             "just give the final answer I should say to Lyfe.\n\n"
             + SHARED_CONTEXT
         ),
@@ -90,7 +92,8 @@ PERSONAS: Dict[str, Dict[str, Any]] = {
             "and use 'Chad' only when something is serious and requires his full attention."
             " Always answer in plain text only: no markdown, no bullet lists, "
             "no numbered lists, no headings, and no code fences. Do not show your "
-            "reasoning or planning, and never include <think> blocks or other tags—"
+            "reasoning or planning. Never include <think> blocks. You MAY include a single emotion tag like (sad), (excited), (whisper) "
+            "at the very start of your response if appropriate, but no other tags—"
             "just give the final answer I should say to Lyfe.\n\n"
             + SHARED_CONTEXT
         ),

@@ -279,6 +279,15 @@ async def api_fish_references_delete(request: Request) -> Dict[str, Any]:
 MEMORY_DB_PATH = Path(os.getenv("MEMORY_DB_PATH", str(Path(__file__).resolve().parent / "memory.db")))
 memory_store = MemoryStore(MEMORY_DB_PATH)
 
+# Sync manual memories on startup
+MANUAL_MEMORIES_PATH = Path(__file__).resolve().parent / "memories.md"
+try:
+    if MANUAL_MEMORIES_PATH.exists():
+        count = memory_store.sync_from_markdown(MANUAL_MEMORIES_PATH)
+        logger.info(f"Synced {count} manual memory sections from {MANUAL_MEMORIES_PATH.name}")
+except Exception as e:
+    logger.error(f"Failed to sync manual memories: {e}")
+
 CHAT_HISTORY_LAST_N = int(os.getenv("CHAT_HISTORY_LAST_N", "16"))
 CHAT_HISTORY_MAX_CHARS = int(os.getenv("CHAT_HISTORY_MAX_CHARS", "6000"))
 
@@ -772,6 +781,13 @@ AUTO_PERSONA_RE = re.compile(
 # Accept both "the collective" and "collective".
 COLLECTIVE_RE = re.compile(r"\b(?:the\s+)?collective\b", re.IGNORECASE)
 
+# Fish Speech / OpenAudio S1 emotion tags
+FISH_EMOTION_TAGS = {
+    "angry", "sad", "excited", "surprised", "satisfied", "delighted",
+    "scared", "worried", "upset", "nervous", "frustrated", "depressed",
+    "empathetic", "embarrassed", "disgusted", "moved", "proud", "relaxed",
+    "grateful", "confident", "interested", "curious", "confused", "joyful"
+}
 
 # -------------------------
 # Audio store (for streaming)
@@ -1001,6 +1017,42 @@ def clean_reply_text(text: str) -> str:
 
     # 1b) Drop any <actions>...</actions> blocks (even if malformed)
     text = ACTIONS_RE.sub("", text)
+
+    # 1c) Normalize Fish Speech emotion tags (if enabled)
+    if FISH_TTS_ENABLED:
+        # Sort by length to match longer tags first (e.g. "surprised" vs "surprise")
+        sorted_tags = sorted(list(FISH_EMOTION_TAGS), key=len, reverse=True)
+        tags_or = "|".join(re.escape(t) for t in sorted_tags)
+        
+        # Common aliases mapping
+        aliases = {
+            "happy": "joyful",
+            "fear": "scared",
+            "laugh": "joyful",
+            "laughing": "joyful",
+            "cry": "sad",
+            "crying": "sad",
+        }
+        alias_or = "|".join(re.escape(t) for t in aliases.keys())
+        
+        # Matches: (tag), [tag], *tag*, tag: at start of string
+        # We match both official tags and aliases
+        combined_pattern = f"(?:{tags_or}|{alias_or})"
+        
+        tag_re = re.compile(
+            r"^\s*(?:[\(\[\*]?)(" + combined_pattern + r")(?:[\)\]\*:]?)\s+",
+            re.IGNORECASE
+        )
+        m = tag_re.match(text)
+        if m:
+            raw_tag = m.group(1).lower()
+            # Resolve alias if present, otherwise use as is
+            tag_found = aliases.get(raw_tag, raw_tag)
+            
+            # Remove the match from the text
+            text = text[m.end():]
+            # Prepend the normalized tag
+            text = f"({tag_found}) {text}"
 
     # 2) Remove simple markdown decoration
     text = re.sub(r"(\*\*|\*|__|_|`)", "", text)
@@ -1471,6 +1523,37 @@ async def call_gemini(system_prompt: str, user_text: str, context: Optional[Cont
     return await asyncio.to_thread(_do_call)
 
 
+def _handle_memory_save_command(text: str) -> Optional[str]:
+    """Check for explicit 'remember this' commands and save to retrieval store."""
+    if not text:
+        return None
+    
+    # Patterns to capture the fact to be saved
+    patterns = [
+        r"^(?:please\s+)?remember\s+that\s+(.+)$",
+        r"^(?:please\s+)?store\s+this\s*[:,-]?\s+(.+)$",
+        r"^(?:please\s+)?add\s+to\s+(?:your\s+)?database\s*[:,-]?\s+(.+)$",
+        r"^(?:please\s+)?save\s+for\s+later\s*[:,-]?\s+(.+)$",
+    ]
+    
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE | re.DOTALL)
+        if m:
+            content = m.group(1).strip()
+            if content:
+                # Save to retrieval store
+                doc_id = uuid.uuid4().hex
+                # Use a snippet as the title
+                title = content[:60] + "..." if len(content) > 60 else content
+                try:
+                    if memory_store.retrieval_available():
+                        memory_store.upsert_retrieval_doc(doc_id, title=title, content=content, tags="user_saved")
+                        return content
+                except Exception:
+                    pass
+    return None
+
+
 async def route_one_persona(persona_key: str, user_text: str, ctx: Context, session_id: str = "default") -> tuple[str, List[Action]]:
     if persona_key not in PERSONAS:
         raise HTTPException(status_code=400, detail=f"Unknown persona '{persona_key}'")
@@ -1478,6 +1561,9 @@ async def route_one_persona(persona_key: str, user_text: str, ctx: Context, sess
     persona = PERSONAS[persona_key]
     llm = persona["llm"]
     base_system_prompt = persona["system_prompt"]
+
+    # Check for explicit memory save command
+    saved_mem_content = _handle_memory_save_command(user_text)
 
     # ---- Tier B: promoted state (persistent) ----
     promoted = memory_store.get_promoted_state()
@@ -1493,9 +1579,20 @@ async def route_one_persona(persona_key: str, user_text: str, ctx: Context, sess
     )
     chat_block = _render_chat_context(summary, turns)
 
-    # ---- Tier C: retrieval (opt-in) ----
+    # ---- Tier C: retrieval (opt-in or explicit) ----
     retrieval_block = ""
-    if promoted.get("retrieval_enabled") and memory_store.retrieval_available():
+    
+    # Inject confirmation if we just saved something
+    if saved_mem_content:
+        retrieval_block += f"\n[System: The user explicitly asked to save this fact. It has been successfully stored in the retrieval database: '{saved_mem_content}']\n"
+
+    # Check for explicit retrieval command (e.g. "Recall...", "Search memories...")
+    explicit_retrieval = False
+    if user_text:
+        explicit_retrieval = bool(re.search(r"\b(recall|search\s+memories|check\s+database|consult\s+archives|think\s+back|look\s+back|use\s+your\s+head)\b", user_text, re.IGNORECASE))
+
+    # Run retrieval if enabled globally OR if explicitly requested
+    if (promoted.get("retrieval_enabled") or explicit_retrieval) and memory_store.retrieval_available():
         hits = memory_store.query_retrieval(user_text or "", limit=3)
         if hits:
             top_k = len(hits)
