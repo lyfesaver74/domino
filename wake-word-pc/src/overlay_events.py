@@ -4,7 +4,15 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 
-OverlayState = Literal["listening", "recording", "transcribing", "thinking", "speaking", "error"]
+OverlayState = Literal[
+    "listening",
+    "recording",
+    "transcribing",
+    "thinking",
+    "tts_building",
+    "speaking",
+    "error",
+]
 
 
 @dataclass(frozen=True)

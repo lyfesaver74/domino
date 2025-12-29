@@ -1,27 +1,16 @@
 ## 12_FISH_TTS_SERVICE — Workspace snapshot (Fish Speech)
 
 High-level:
-- Wrapper workspace includes:
-  - upstream Fish-Speech under fish-speech/
-  - local model weights under checkpoints/
-  - local reference voices under references/
-  - custom static UI + Nginx proxy under ui/
-- Two official entrypoints:
-  - Gradio WebUI (port 7860)
-  - HTTP API server (port 8080)
-- Custom UI served by Nginx on port 80 proxies /api/* to API server.
 
-Repo structure (as described):
-Root wrapper layer:
-- checkpoints/
-  - openaudio-s1-mini contains model.pth, codec.pth, config.json, tokenizer.tiktoken, special_tokens.json
-- references/
-  - each reference is a folder like domino_v1/ with sample.wav + sample.lab
-- ui/
-  - index.html (entire frontend)
-  - nginx.conf (reverse proxy)
-- docker-compose.yml (currently empty)
-- test1.wav, test2.wav (test inputs)
+- Fish Speech upstream lives under `services/tts-fish/fish-speech/`.
+- Domino runs Fish (API server) + Fish UI under `hub/docker-compose.yml` (Fish wrapper-level compose is intentionally a placeholder).
+- Fish exposes an HTTP API server on port 8080 in-container; the nginx UI proxies `/api/*` to avoid CORS.
+
+Wrapper structure (relevant bits):
+
+- `services/tts-fish/references/` — reference voice folders.
+- Host-mounted model/reference paths used by compose: `/opt/tts-fish/checkpoints` and `/opt/tts-fish/references`.
+- `services/tts-fish/ui/` — nginx-served UI.
 
 Upstream Fish Speech codebase:
 - fish-speech/ (upstream project)
@@ -55,10 +44,7 @@ API surface (from views.py summary):
 - /v1/references/delete (DELETE expects BODY field reference_id; not query param)
 - /v1/references/update (POST expects BODY fields old_reference_id, new_reference_id)
 
-Important mismatches / spaghetti risks (as provided):
-- Root docker-compose.yml is empty (no services).
-- Upstream compose base mounts are relative; if running compose from fish-speech dir, mounts may not map to real root checkpoints/references in wrapper workspace.
-- Nginx proxies to fish-speech-server:8080 but upstream compose service name is server (DNS mismatch unless container_name configured).
-- Custom UI delete is broken in two ways:
-  - uses undefined API_BASE in one place
-  - calls DELETE with query param (?id=...), but server expects BODY reference_id
+Notes / pitfalls:
+
+- `services/tts-fish/docker-compose.yml` is intentionally empty; use `hub/docker-compose.yml` to run the stack.
+- If Fish can’t find weights, check the host mounts for `/opt/tts-fish/checkpoints` and `/opt/tts-fish/references`.

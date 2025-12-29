@@ -25,8 +25,9 @@ Happy path:
 - waits for wake hit (async for hit in listener.listen())
 - records audio with record_command(...) in worker thread
 - sends WAV bytes to hub via HubClient.stt()
-- sends text to hub via HubClient.ask()
-- broadcasts overlay messages: status, assistant_reply, error (no tts_audio currently)
+- sends text to hub via HubClient.ask() (often text-only first)
+- optionally requests TTS explicitly and plays it locally
+- broadcasts overlay messages including: status, assistant_reply, actions, tts_audio, error
 
 Overlay event schema:
 
@@ -40,10 +41,6 @@ Overlay HTML (how to work with it):
 - Files live under wake-word-pc/overlay/Content/
   - index.html loads styles.css + overlay.js
   - settings.html + settings.js is a local tuning page (writes to localStorage and generates a preview URL)
-- WebSocket URL resolution (overlay.js):
-  1) window.DOMINO_WS_URL (set in index.html)
-  2) ?ws=<ws://HOST:PORT/PATH> querystring
-  3) default <ws://127.0.0.1:8765/ws>
 - Debug + simulation:
   - ?debug=1 enables a small debug HUD and keeps visuals slightly active.
   - ?sim=1 runs simulated subtitles/animation without needing the websocket.
@@ -58,6 +55,11 @@ Overlay HTML (how to work with it):
     - wake / user_utterance / actions are broadcast by the app but not rendered by overlay.js today.
   - overlay.js includes a host scaling workaround for “tiny viewport” CEF/overlay-host bugs; it may apply a CSS scale on #root.
 
+Desktop overlay host gotcha (Windows):
+
+- There may be multiple `HtmlWindowsOverlay.exe` copies on a machine (e.g., bundled with other apps). Use the Domino one under `wake-word-pc/overlay/HtmlWindowsOverlay.exe`.
+- Some hosts load content from `overlay/Content-1st/` instead of `overlay/Content/`. If “browser preview works but desktop overlay doesn’t”, check which folder the host is serving.
+
 Config + deps:
 
 - settings.json: hub URL/paths, WS host/port/path, wake words/colors, audio device, Vosk model path, VAD thresholds
@@ -68,7 +70,6 @@ Legacy / unused by current core_m2 path:
 
 - record_vad.py appears unreferenced
 - settings.py only used by hub_smoke_test.py
-- audio_playback.py only used by hub_smoke_test.py (--play-audio)
 
 Redundancies:
 

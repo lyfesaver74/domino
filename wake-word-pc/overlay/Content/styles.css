@@ -66,7 +66,9 @@ html, body {
 
 /* When connected, keep the center visible but do NOT dim the background. */
 #root.connected #center {
-  opacity: 1;
+  /* Connected should not force the center HUD visible.
+     The center should only show when the wake flow activates the overlay. */
+  opacity: 0;
 }
 
 #root.connected #backdrop {

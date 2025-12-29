@@ -72,7 +72,7 @@ async def main() -> int:
         ask_res = await hub.ask(
             persona=args.persona,
             text=args.text,
-            session_id=settings.client.device,
+            session_id=(settings.client.session_id or settings.client.device),
         )
         if ask_res is None:
             print("[hub_smoke_test] /api/ask -> FAILED")

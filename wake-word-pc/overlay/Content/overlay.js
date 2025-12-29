@@ -36,6 +36,28 @@
   let subtitleLoopRunning = false;
   let lastAccent = '#00ffaa';
 
+  /** @type {Array<{ text: string, color?: string, persona?: string }>} */
+  const pendingReplies = [];
+  /** @type {number | null} */
+  let pendingFlushTimer = null;
+
+  function flushPendingReplies() {
+    if (!pendingReplies.length) return;
+    while (pendingReplies.length) {
+      const item = pendingReplies.shift();
+      if (!item) continue;
+      enqueueSubtitles(item.text || '', item.color, item.persona);
+    }
+  }
+
+  function schedulePendingFlushFallback() {
+    if (pendingFlushTimer !== null) return;
+    pendingFlushTimer = window.setTimeout(() => {
+      pendingFlushTimer = null;
+      flushPendingReplies();
+    }, 15000);
+  }
+
   const COLS = 7;
   // Use an odd segment count so there's a true single center segment.
   const SEGS = 17;
@@ -532,6 +554,9 @@
     // Keep class list small and explicit.
     rootEl.classList.toggle('state-recording', s === 'recording');
     rootEl.classList.toggle('state-thinking', s === 'thinking');
+    // Intermediate non-speaking phases should not trigger the full-bar animation.
+    // Treat them as a steady center-only phase.
+    rootEl.classList.toggle('state-processing', s === 'transcribing' || s === 'tts_building');
     // Clear the phase marker; it will be recomputed by the animation loop.
     rootEl.classList.remove('rest-phase');
   }
@@ -740,7 +765,8 @@
       if (rootEl && overlaySettings.animStyle === 'kitt') {
         const inRecording = rootEl.classList.contains('state-recording');
         const inThinking = rootEl.classList.contains('state-thinking');
-        if (inRecording || inThinking) {
+        const inProcessing = rootEl.classList.contains('state-processing');
+        if (inRecording || inThinking || inProcessing) {
           const dt = (t - start) / 1000;
           rootEl.classList.add('rest-phase');
 
@@ -751,7 +777,7 @@
             setCenterCoreGlowFromG2(overlaySettings.glow * pulseG);
             renderClassicKitt([0,0,0,0,0,0,0], { idle: false, baseline: clamp01(pulseB) });
           } else {
-            // Thinking: steady brightness, no extra glow override.
+            // Thinking/processing: steady brightness, no extra glow override.
             clearCenterCoreGlowOverride();
             renderClassicKitt([0,0,0,0,0,0,0], { idle: false, baseline: 1 });
           }
@@ -1017,6 +1043,14 @@
         const holdMs = Math.max(1400, Math.min(5200, 900 + len * 38));
         await sleep(holdMs);
 
+        if (!subtitleQueue.length && String(statusState || '').trim().toLowerCase() === 'speaking') {
+          const waitStart = Date.now();
+          while (String(statusState || '').trim().toLowerCase() === 'speaking') {
+            if (Date.now() - waitStart > 20000) break;
+            await sleep(80);
+          }
+        }
+
         if (subtitleEl) {
           subtitleEl.classList.remove('show');
           subtitleEl.classList.add('hide');
@@ -1031,7 +1065,9 @@
         subtitleEl.classList.remove('show');
         subtitleEl.classList.remove('hide');
       }
-      setActive(false);
+      if (String(statusState || '').trim().toLowerCase() === 'listening') {
+        setActive(false);
+      }
     }
   }
 
@@ -1105,6 +1141,24 @@
         // Status is mostly a state machine signal; don't let the default "white" idle color
         // overwrite the persona accent (it makes the whole overlay look stuck in white).
         setStatusState(msg.state);
+
+        const newState = String(msg.state || '').trim().toLowerCase();
+        if (newState === 'speaking') {
+          if (pendingFlushTimer !== null) {
+            clearTimeout(pendingFlushTimer);
+            pendingFlushTimer = null;
+          }
+          flushPendingReplies();
+        }
+
+        if (newState === 'listening' && pendingReplies.length) {
+          if (pendingFlushTimer !== null) {
+            clearTimeout(pendingFlushTimer);
+            pendingFlushTimer = null;
+          }
+          flushPendingReplies();
+        }
+
         const c = String(msg.color || '').trim();
         if (c && c.toLowerCase() !== '#ffffff' && c.toLowerCase() !== 'white') {
           setAccent(c);
@@ -1114,13 +1168,22 @@
 
       if (msg.type === 'assistant_reply') {
         setAccent(msg.color || lastAccent);
-        enqueueSubtitles(msg.text || '', msg.color, msg.persona);
-        pokeKittActive(3200);
+        pendingReplies.push({ text: msg.text || '', color: msg.color, persona: msg.persona });
+        if (String(statusState || '').trim().toLowerCase() === 'speaking') {
+          flushPendingReplies();
+        } else {
+          schedulePendingFlushFallback();
+        }
         return;
       }
 
       if (msg.type === 'tts_audio') {
         setAccent(msg.color || lastAccent);
+        if (pendingFlushTimer !== null) {
+          clearTimeout(pendingFlushTimer);
+          pendingFlushTimer = null;
+        }
+        flushPendingReplies();
         // Overlay is click-through; do not attempt audio playback here.
         // Use this event only to keep visuals active.
         pokeKittActive(3000);

@@ -1,5 +1,10 @@
 ## 07_TTS — Fish + ElevenLabs + browser fallback
 
+## Current pipeline (important)
+
+- Hub supports a two-step flow: `/api/ask` can be text-only (`tts=false`), and `/api/tts` generates audio for that text.
+- Optional cue: `/api/pre_tts` returns a small pre-roll WAV URL under `/static/pre_tts` (useful when real synthesis will take a moment).
+
 ### Server-side TTS decision
 main.py: generate_tts(persona, text, tts_pref="auto")
 - tts_pref comes from promoted state tts_overrides[persona] via _pick_tts_pref()

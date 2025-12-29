@@ -1,29 +1,26 @@
 # 02_CURRENT_STATE — Project Snapshot (what’s running, what talks to what)
 
+## Recent deltas (summary)
+
+- Fish + Whisper are run under `hub/docker-compose.yml`.
+- Fish wrapper-level `services/tts-fish/docker-compose.yml` is intentionally a placeholder (to avoid running the wrong stack from the wrong folder).
+- Hub supports a two-step TTS pipeline: `/api/ask` (optionally text-only) → `/api/tts` for audio; optional `/api/pre_tts` cue selection.
+
 ## Workspace layout (Domino Hub root app)
 
-Root app (FastAPI hub):
+Root app (FastAPI hub): `hub/` (FastAPI app + compose)
 
-- main.py, personas.py, schemas.py, memory_store.py, tts_fish.py
-- requirements.txt, Dockerfile, docker-compose.yml
+Web console UI served by hub: `hub/console.*`
 
-Web console UI served by hub:
+Fish Voice Studio UI (separate nginx container): `services/tts-fish/ui/`
 
-- console.html + console.js + console.css
-
-Fish Voice Studio UI (separate nginx container):
-
-- index.html + nginx.conf
-
-Backup snapshot directory (workspace rollback only; not built into the hub image):
-
-- _fallback_20251221_160851
+Workspace snapshot/rollback folder exists but is not part of the container build.
 
 ---
 
 ## Containers, networks, ports, volumes (docker-compose)
 
-All orchestrated via docker-compose.yml.
+All orchestrated via `hub/docker-compose.yml`.
 
 ### Services
 
@@ -67,11 +64,7 @@ All orchestrated via docker-compose.yml.
   - nginx.conf mounted read-only into nginx config
 - Nginx behavior: any request to /api/ is proxied to <http://fish-speech-server:8080/>
 
-Note:
-
-- The host UI directory path is configurable via `DOMINO_UI_DIR` in docker-compose.
-  - Default: `/opt/domino_hub/ui`
-  - Local dev: set `DOMINO_UI_DIR=./ui` (relative to the compose file)
+Note: UI directory path is configurable via `DOMINO_UI_DIR` in compose (defaults to `/opt/domino_hub/ui`).
 
 ### Networks / connectivity
 

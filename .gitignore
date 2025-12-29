@@ -37,3 +37,8 @@ wake-word-pc/overlay/Content/*.js
 
 # editor
 **/.vscode/
+
+# local workspace + helper scripts (developer machine-specific)
+domino.code-workspace
+wake-word-pc/print_overlay_urls.ps1
+wake-word-pc/restart_overlay.ps1

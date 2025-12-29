@@ -7,6 +7,8 @@ POST /api/stt → JSON { text }
 - Sends audio file bytes to WHISPER_URL + /transcribe
 - WHISPER_URL not set in compose by default; expected via .env
 
+Typical docker value: `WHISPER_URL=http://whisper:9000`
+
 ## Health + time
 
 GET /health → JSON with:
@@ -27,7 +29,22 @@ Handles:
 - “auto” routing
 - “collective” fan-out when multiple personas are mentioned or “the collective” appears
 
-Includes optional audio_b64 + tts_provider in response
+Supports a two-step voice pipeline:
+
+- If request includes `tts=true` (or omits it depending on client), the response may include `audio_b64` + `tts_provider`.
+- If request includes `tts=false`, response is text-only; client can later call `/api/tts`.
+
+Response may include `pre_tts_vibe` hints for clients that want a short “pre-roll” cue.
+
+## TTS
+
+POST /api/tts → JSON { audio_b64, tts_provider, mime }
+
+- Generates audio for provided text + persona.
+
+GET /api/pre_tts → JSON { url, persona, vibe, variant }
+
+- Returns a URL under `/static/pre_tts` that clients can fetch (optional cue / pre-roll).
 
 ## Chat (streaming SSE)
 

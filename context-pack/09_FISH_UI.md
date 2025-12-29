@@ -11,5 +11,7 @@ Supports:
 - list/add/delete references
 - POST /v1/tts
 
-Note:
-- UI JS contains a deleteRef() that references API_BASE in one spot; if delete fails, this may be why (it otherwise uses /api/... elsewhere).
+Notes:
+
+- This UI is served by the `fish-ui` nginx container; it exists mainly for reference management + quick TTS testing.
+- Reference deletion expects `reference_id` in the DELETE request body (server contract).

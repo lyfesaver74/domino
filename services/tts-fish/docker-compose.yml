@@ -1,0 +1,7 @@
+## Intentionally empty.
+##
+## This repo runs Fish + Whisper as services under hub/docker-compose.yml.
+## Keep this file as a placeholder to avoid accidental "docker compose up" in
+## this folder doing something surprising.
+
+
