@@ -1021,9 +1021,6 @@ def clean_reply_text(text: str) -> str:
     # 1c) Normalize Fish Speech emotion tags (if enabled)
     if FISH_TTS_ENABLED:
         # Sort by length to match longer tags first (e.g. "surprised" vs "surprise")
-        sorted_tags = sorted(list(FISH_EMOTION_TAGS), key=len, reverse=True)
-        tags_or = "|".join(re.escape(t) for t in sorted_tags)
-        
         # Common aliases mapping
         aliases = {
             "happy": "joyful",
@@ -1033,26 +1030,27 @@ def clean_reply_text(text: str) -> str:
             "cry": "sad",
             "crying": "sad",
         }
-        alias_or = "|".join(re.escape(t) for t in aliases.keys())
         
-        # Matches: (tag), [tag], *tag*, tag: at start of string
-        # We match both official tags and aliases
-        combined_pattern = f"(?:{tags_or}|{alias_or})"
+        all_valid_tags = set(FISH_EMOTION_TAGS) | set(aliases.keys())
+        sorted_tags = sorted(list(all_valid_tags), key=len, reverse=True)
+        tags_or = "|".join(re.escape(t) for t in sorted_tags)
         
+        # Regex to find tags with various delimiters: (tag), [tag], *tag*, or tag:
+        # We capture the tag name in group 1 (delimited) or group 2 (colon)
+        # We use \s* to allow spaces inside delimiters like ( sad )
         tag_re = re.compile(
-            r"^\s*(?:[\(\[\*]?)(" + combined_pattern + r")(?:[\)\]\*:]?)\s+",
+            r"(?:[\(\[\*])\s*(" + tags_or + r")\s*(?:[\)\]\*])|(?:\b(" + tags_or + r"):\s+)",
             re.IGNORECASE
         )
-        m = tag_re.match(text)
-        if m:
-            raw_tag = m.group(1).lower()
-            # Resolve alias if present, otherwise use as is
-            tag_found = aliases.get(raw_tag, raw_tag)
-            
-            # Remove the match from the text
-            text = text[m.end():]
-            # Prepend the normalized tag
-            text = f"({tag_found}) {text}"
+
+        def _tag_replacer(m: re.Match) -> str:
+            raw = m.group(1) or m.group(2)
+            if not raw:
+                return m.group(0)
+            norm = aliases.get(raw.lower(), raw.lower())
+            return f"({norm}) "
+
+        text = tag_re.sub(_tag_replacer, text)
 
     # 2) Remove simple markdown decoration
     text = re.sub(r"(\*\*|\*|__|_|`)", "", text)
