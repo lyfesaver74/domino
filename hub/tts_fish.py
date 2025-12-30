@@ -49,16 +49,16 @@ async def tts_with_fish(
     # Heuristic: If an emotion tag is present ANYWHERE, boost temperature/top_p
     # to allow the emotion to override the reference audio's prosody.
     # We look for the normalized format (tag) which main.py produces.
-    if "(" in text and ")" in text:
-        # Simple check: is there a (word) that looks like a tag?
-        # We don't need to be perfect, just aggressive enough to catch it.
-        if any(f"({t})" in text for t in ["joyful", "sad", "angry", "excited", "surprised", "scared", "whisper"]):
-            # Boost significantly for S1 Mini (Max allowed by schema is 1.0)
-            if temperature <= 0.8:
-                temperature = 1.0
-            if top_p <= 0.8:
-                top_p = 0.95
-            print(f"[DominoHub] Fish TTS: Detected emotion tag in '{text[:30]}...', boosting temp={temperature}, top_p={top_p}")
+    # if "(" in text and ")" in text:
+    #     # Simple check: is there a (word) that looks like a tag?
+    #     # We don't need to be perfect, just aggressive enough to catch it.
+    #     if any(f"({t})" in text for t in ["joyful", "sad", "angry", "excited", "surprised", "scared", "whisper"]):
+    #         # Boost significantly for S1 Mini (Max allowed by schema is 1.0)
+    #         if temperature <= 0.8:
+    #             temperature = 1.0
+    #         if top_p <= 0.8:
+    #             top_p = 0.95
+    #         print(f"[DominoHub] Fish TTS: Detected emotion tag in '{text[:30]}...', boosting temp={temperature}, top_p={top_p}")
 
     base = (base_url or FISH_TTS_BASE_URL).rstrip("/")
     url = f"{base}/v1/tts"

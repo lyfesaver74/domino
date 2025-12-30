@@ -27,9 +27,9 @@ def test_fish_tts():
         "normalize": True,
         "streaming": False,
         "max_new_tokens": 1024,
-        "top_p": 0.95,          # Boosted for emotion
+        "top_p": 0.7,
         "repetition_penalty": 1.1,
-        "temperature": 1.0      # Boosted for emotion (Max 1.0)
+        "temperature": 0.7
     }
 
     print(f"Sending request to {url}...")
